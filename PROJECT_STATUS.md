@@ -8,7 +8,7 @@ next session.
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the basic Notes
-module are implemented. The full headless suite is green: **410 tests**.
+module are implemented. The full headless suite is green: **414 tests**.
 
 Not built yet: native phone sync and optional later tools such as a file
 manager or mail.
@@ -122,18 +122,28 @@ importer for the complete transfer.
 
 ## Notes module
 
-The basic Notes module is implemented:
+The Notes module is implemented:
 
+- each note is a Markdown file under `notes/` in the project root;
+- notes have YAML-style front matter with a stable id, title and timestamp;
 - list/search, create, select and edit notes;
-- autosave through `ctx.storage` with a debounce timer;
+- autosave with a debounce timer; the previous note is flushed when switching;
 - last selected note restored on restart;
-- model covered by `tests/test_notes_engine.py`;
+- images are copied to `notes/assets/<note-id>/` and inserted as relative
+  Markdown links (`![alt](assets/...)`);
+- local images are rendered inline in the editor; the Markdown link is
+  reconstructed when the note is saved;
+- Ctrl+V inserts a clipboard image when it contains PNG/JPEG/WebP data;
+- legacy notes from `notes.json` are migrated automatically on first launch;
+- `notes/` is ignored by Git;
+- model and file store covered by `tests/test_notes_engine.py` and
+  `tests/test_notes_store.py`;
 - registered in `omnify/modules/__init__.py`.
 
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **410 OK**
+- `python3 -m unittest discover -s tests` → **414 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance

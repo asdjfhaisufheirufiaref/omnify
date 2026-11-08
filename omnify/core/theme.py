@@ -508,6 +508,14 @@ button:disabled { opacity: 0.55; }
     background: var(--omnify-accent-soft);
     color: var(--omnify-accent);}
 
+/* Картинка, яку Notes показує всередині тексту нотатки. */
+.notes-inline-image {
+    border: 1px solid var(--omnify-border);
+    border-radius: 8px;
+    background: var(--omnify-bg-alt);
+    padding: 4px;
+}
+
 /* Sidebar */
 .omnify-sidebar {
     background: var(--omnify-bg-alt);

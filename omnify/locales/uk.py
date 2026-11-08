@@ -1250,4 +1250,12 @@ TRANSLATIONS = {
     "Search notes": "Пошук нотаток",
     "Untitled": "Без назви",
     "More actions": "Більше дій",
+    "Insert image": "Вставити зображення",
+    "Insert image (Ctrl+V)": "Вставити зображення (Ctrl+V)",
+    "Image files": "Файли зображень",
+    "All files": "Усі файли",
+    "Choose an image from a local folder": "Виберіть зображення з локальної папки",
+    "Could not insert image: {error}": "Не вдалося вставити зображення: {error}",
+    "Image inserted: {name}": "Зображення вставлено: {name}",
+    "Could not save note: {error}": "Не вдалося зберегти нотатку: {error}",
 }
