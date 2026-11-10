@@ -8,6 +8,7 @@ from pathlib import Path
 
 from omnify.modules.notes_engine import Note, NoteStore
 from omnify.modules.notes_render import (
+    export_bundle_html,
     export_html,
     export_pdf,
     note_to_html,
@@ -82,6 +83,30 @@ class MarkdownParserTests(unittest.TestCase):
             self.assertIn("<table>", html_path.read_text(encoding="utf-8"))
             self.assertTrue(pdf_path.is_file())
             self.assertEqual(pdf_path.read_bytes()[:4], b"%PDF")
+
+    def test_export_bundle_writes_index_and_standalone_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = NoteStore(root / "notes")
+            first = Note(label="Plan", contents="# Plan\n\nHello", tags=["work"])
+            second = Note(label="Plan", contents="Second", folder="Ideas")
+            store.save(first)
+            store.save(second)
+
+            index_path, count = export_bundle_html(
+                [first, second],
+                store,
+                root / "export",
+            )
+
+            self.assertEqual(count, 2)
+            self.assertTrue(index_path.is_file())
+            html_files = sorted((root / "export").glob("*.html"))
+            self.assertEqual(len(html_files), 3)
+            index = index_path.read_text(encoding="utf-8")
+            self.assertIn("Plan", index)
+            self.assertIn("entry-tags", index)
+            self.assertIn("entry-folder", index)
 
 
 if __name__ == "__main__":

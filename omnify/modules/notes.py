@@ -25,7 +25,7 @@ from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from .notes_engine import Note, NoteStore, default_backup_dir
 from .notes_preview import build_preview
-from .notes_render import export_html, export_pdf
+from .notes_render import export_bundle_html, export_html, export_pdf
 
 # Регулярний вираз шукає Markdown-посилання на картинку в папці assets.
 # Група 1 — підпис (alt), група 2 — шлях після дужки.
@@ -110,6 +110,7 @@ class NotesModule(BaseModule):
         # поки діалог ще показується.
         self._image_dialog = None
         self._export_dialog = None
+        self._export_all_dialog = None
         self._sync_dialog = None
         self._restore_dialog = None
 
@@ -159,7 +160,7 @@ class NotesModule(BaseModule):
 
         # Поле пошуку фільтрує список за назвою, текстом і тегами нотатки.
         search = Gtk.SearchEntry()
-        search.set_placeholder_text("Search notes")
+        search.set_placeholder_text("Search notes or #tag")
         search.set_margin_start(8)
         search.set_margin_end(8)
         search.connect("search-changed", self._on_search_changed)
@@ -188,6 +189,29 @@ class NotesModule(BaseModule):
         self._folder_button = folder_button
         self._folder_popover = folder_popover
         self._folder_popover_box = folder_popover_box
+
+        # Меню тегів — швидкий спосіб відфільтрувати нотатки без ручного
+        # введення #тегу в полі пошуку.
+        tag_button = Gtk.MenuButton(label=tr("Tags"))
+        tag_button.set_tooltip_text("Filter notes by tag")
+        tag_button.get_style_context().add_class("notes-folder-button")
+        tag_button.set_margin_start(8)
+        tag_button.set_margin_end(8)
+        tag_popover = Gtk.Popover()
+        tag_popover_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=4,
+        )
+        tag_popover_box.set_margin_top(8)
+        tag_popover_box.set_margin_bottom(8)
+        tag_popover_box.set_margin_start(8)
+        tag_popover_box.set_margin_end(8)
+        tag_popover.set_child(tag_popover_box)
+        tag_button.set_popover(tag_popover)
+        sidebar.append(tag_button)
+        self._tag_button = tag_button
+        self._tag_popover = tag_popover
+        self._tag_popover_box = tag_popover_box
 
         list_scroll = Gtk.ScrolledWindow()
         list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -440,9 +464,11 @@ class NotesModule(BaseModule):
         actions = [
             (tr("Export as HTML…"), self._on_export_html),
             (tr("Export as PDF…"), self._on_export_pdf),
+            (tr("Export all notes as HTML…"), self._on_export_all_html),
             (tr("Backup notes"), self._on_backup_notes),
             (tr("Restore backup…"), self._on_restore_notes),
             (tr("Sync notes to folder…"), self._on_sync_notes),
+            (tr("Two-way sync with folder…"), self._on_two_way_sync_notes),
         ]
         for label, callback in actions:
             button = Gtk.Button(label=label)
@@ -572,6 +598,7 @@ class NotesModule(BaseModule):
             self._folder_filter = _ALL_NOTES
 
         self._refresh_folder_popover()
+        self._refresh_tag_popover()
         self._refresh_visibility()
 
         # Якщо вибрана папка порожня, показуємо всі нотатки: інакше
@@ -1009,6 +1036,7 @@ class NotesModule(BaseModule):
         self._current_note.tags = self._parse_tags(entry.get_text())
         self._update_row_tags(self._current_note)
         self._refresh_visibility()
+        self._refresh_tag_popover()
         if self._preview_toggle.get_active():
             self._refresh_preview()
         self._set_save_status(tr("Saving…"))
@@ -1068,6 +1096,7 @@ class NotesModule(BaseModule):
         """Показати лише нотатки, які містять пошуковий запит."""
         self._search_query = entry.get_text().strip().casefold()
         self._refresh_visibility()
+        self._refresh_tag_popover()
 
     def _insert_markdown_snippet(self, snippet: str) -> None:
         """Вставити Markdown-шаблон у позицію курсора."""
@@ -1251,7 +1280,125 @@ class NotesModule(BaseModule):
         delete_button.connect("clicked", self._on_delete_folder_clicked)
         box.append(delete_button)
 
+        # Перейменування доступне лише для справжньої папки, а не для
+        # віртуальних фільтрів "Усі нотатки"/"Без папки".
+        if self._folder_filter not in {_ALL_NOTES, _UNFILED}:
+            box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+            rename_label = Gtk.Label(label=tr("Rename folder"), xalign=0.0)
+            rename_label.get_style_context().add_class("omnify-dim")
+            box.append(rename_label)
+
+            rename_entry = Gtk.Entry()
+            rename_entry.set_text(self._folder_filter)
+            rename_entry.set_placeholder_text(tr("New folder name"))
+            box.append(rename_entry)
+
+            rename_button = Gtk.Button(label=tr("Rename"))
+            rename_button.connect(
+                "clicked",
+                lambda _button, entry=rename_entry: self._rename_folder_from_entry(entry),
+            )
+            box.append(rename_button)
+
         self._refresh_folder_button()
+
+    def _tag_counts(self) -> list[tuple[str, int]]:
+        """Порахувати нотатки для кожного тегу (без урахування регістру)."""
+        counts: dict[str, list] = {}
+        for note in self._notes:
+            seen: set[str] = set()
+            for tag in note.tags:
+                key = tag.casefold()
+                if key in seen:
+                    continue
+                seen.add(key)
+                if key not in counts:
+                    counts[key] = [tag, 0]
+                counts[key][1] += 1
+        return [
+            (str(display), int(count))
+            for _key, (display, count) in sorted(
+                counts.items(),
+                key=lambda item: item[0].casefold(),
+            )
+        ]
+
+    def _active_tag(self) -> str:
+        """Повернути тег із пошуку, якщо він починається з #."""
+        query = self._search_query.strip()
+        return query[1:].strip() if query.startswith("#") else ""
+
+    def _refresh_tag_button(self) -> None:
+        """Показати активний тег на кнопці або загальний підпис."""
+        button = getattr(self, "_tag_button", None)
+        if button is None:
+            return
+        active = self._active_tag()
+        button.set_label(f"#{active}" if active else tr("Tags"))
+
+    def _refresh_tag_popover(self) -> None:
+        """Перебудувати меню тегів з актуальними назвами й кількістю."""
+        from gi.repository import Gtk
+
+        box = getattr(self, "_tag_popover_box", None)
+        if box is None:
+            return
+        while True:
+            child = box.get_first_child()
+            if child is None:
+                break
+            box.remove(child)
+
+        active = self._active_tag().casefold()
+        all_button_label = tr("Clear tag filter") if active else tr("All tags")
+        all_button = Gtk.Button(label=all_button_label)
+        all_button.set_halign(Gtk.Align.FILL)
+        all_button.get_style_context().add_class("notes-menu-item")
+        all_button.connect("clicked", lambda _button: self._clear_tag_filter())
+        box.append(all_button)
+
+        counts = self._tag_counts()
+        if not counts:
+            empty = Gtk.Label(label=tr("No tags yet"), xalign=0.0)
+            empty.get_style_context().add_class("omnify-dim")
+            box.append(empty)
+        else:
+            box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+            for tag, count in counts:
+                marker = "✓ " if tag.casefold() == active else ""
+                button = Gtk.Button(label=f"{marker}#{tag}  ({count})")
+                button.set_halign(Gtk.Align.FILL)
+                button.get_style_context().add_class("notes-menu-item")
+                button.connect(
+                    "clicked",
+                    lambda _button, value=tag: self._filter_by_tag(value),
+                )
+                box.append(button)
+
+        self._refresh_tag_button()
+
+    def _filter_by_tag(self, tag: str) -> None:
+        """Підставити #тег у поле пошуку й закрити меню."""
+        query = f"#{tag}"
+        # Оновлюємо стан одразу, не чекаючи відкладеного search-changed
+        # від Gtk.SearchEntry.
+        self._search_query = query.casefold()
+        self._search_entry.set_text(query)
+        self._refresh_visibility()
+        self._refresh_tag_popover()
+        popover = getattr(self, "_tag_popover", None)
+        if popover is not None:
+            popover.popdown()
+
+    def _clear_tag_filter(self) -> None:
+        """Прибрати теговий фільтр, не змінюючи фільтр папок."""
+        self._search_query = ""
+        self._search_entry.set_text("")
+        self._refresh_visibility()
+        self._refresh_tag_popover()
+        popover = getattr(self, "_tag_popover", None)
+        if popover is not None:
+            popover.popdown()
 
     def _on_folder_filter_selected(self, folder: str) -> None:
         """Перемкнути видиму папку."""
@@ -1287,6 +1434,28 @@ class NotesModule(BaseModule):
         self._folder_popover.popdown()
         self.ctx.notify(tr("Folder created: {name}", name=folder))
         self._save_selected_id()
+
+    def _rename_folder_from_entry(self, entry) -> None:
+        """Перейменувати вибрану папку разом з її нотатками."""
+        if self._store is None or self._folder_filter in {_ALL_NOTES, _UNFILED}:
+            return
+        old_folder = self._folder_filter
+        new_name = entry.get_text().strip()
+        if not new_name or new_name == old_folder:
+            return
+
+        self._sync_current_note()
+        self._save_current_note()
+        try:
+            moved = self._store.rename_folder(old_folder, new_name)
+            new_folder = self._store._safe_folder(new_name)
+        except Exception as exc:
+            self.ctx.notify(tr("Could not rename folder: {error}", error=exc))
+            return
+
+        self._folder_filter = new_folder
+        self._reload_notes_from_store(self._selected_id)
+        self.ctx.notify(tr("Folder renamed. Moved notes: {count}", count=moved))
 
     def _on_delete_folder_clicked(self, _button) -> None:
         """Видалити поточну папку, перенісши нотатки в Unfiled."""
@@ -1397,6 +1566,7 @@ class NotesModule(BaseModule):
         self._notes_by_id = {note.id: note for note in notes}
         self._rebuild_notes_list()
         self._refresh_folder_popover()
+        self._refresh_tag_popover()
         self._refresh_visibility()
         row = self._visible_row_for_id(preserve_id)
         if row is None:
@@ -1821,6 +1991,49 @@ class NotesModule(BaseModule):
 
         self._choose_export_path("pdf", run)
 
+    def _on_export_all_html(self) -> None:
+        """Експортувати всі нотатки в теку з index.html."""
+        from gi.repository import Gtk
+
+        if self._store is None:
+            return
+        self._sync_current_note()
+        self._save_current_note()
+        notes = self._store.load()
+
+        dialog = Gtk.FileChooserNative(
+            title=tr("Choose export folder"),
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            transient_for=self._parent_window(),
+        )
+
+        def on_response(native, response):
+            self._export_all_dialog = None
+            if response != Gtk.ResponseType.ACCEPT:
+                native.destroy()
+                return
+            file = native.get_file()
+            native.destroy()
+            if file is None or not file.get_path():
+                return
+            target = Path(file.get_path()).expanduser()
+            try:
+                if target.resolve() == self._store.root or target.resolve().is_relative_to(
+                    self._store.root
+                ):
+                    raise ValueError("Export folder cannot be inside notes")
+                _index_path, count = export_bundle_html(notes, self._store, target)
+            except Exception as exc:
+                self.ctx.notify(tr("Could not export notes: {error}", error=exc))
+                return
+            self.ctx.notify(
+                tr("Exported notes: {count} to {path}", count=count, path=target)
+            )
+
+        dialog.connect("response", on_response)
+        self._export_all_dialog = dialog
+        dialog.show()
+
     def _on_backup_notes(self) -> None:
         """Створити ZIP-архів усіх нотаток."""
         if self._store is None:
@@ -1918,6 +2131,56 @@ class NotesModule(BaseModule):
                 self.ctx.notify(tr("Could not sync notes: {error}", error=exc))
                 return
             self.ctx.notify(tr("Notes synced to: {path}", path=target))
+
+        dialog.connect("response", on_response)
+        self._sync_dialog = dialog
+        dialog.show()
+
+    def _on_two_way_sync_notes(self) -> None:
+        """Об'єднати нотатки з іншою текою в обидва боки."""
+        from gi.repository import Gtk
+
+        if self._store is None:
+            return
+        self._sync_current_note()
+
+        dialog = Gtk.FileChooserNative(
+            title=tr("Choose two-way sync folder"),
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            transient_for=self._parent_window(),
+        )
+
+        def on_response(native, response):
+            self._sync_dialog = None
+            if response != Gtk.ResponseType.ACCEPT:
+                native.destroy()
+                return
+            file = native.get_file()
+            native.destroy()
+            if file is None:
+                return
+            target = file.get_path()
+            if not target:
+                return
+            self._sync_current_note()
+            self._save_current_note()
+            try:
+                # Перед об'єднанням створюємо страхувальну копію. Якщо її
+                # не вдалося зробити, краще не ризикувати даними.
+                self._store.create_backup(default_backup_dir())
+                imported, updated, exported = self._store.sync_two_way(target)
+            except Exception as exc:
+                self.ctx.notify(tr("Could not sync notes: {error}", error=exc))
+                return
+            self._reload_notes_from_store(self._selected_id)
+            self.ctx.notify(
+                tr(
+                    "Notes merged. Imported: {imported}, updated: {updated}, exported: {exported}",
+                    imported=imported,
+                    updated=updated,
+                    exported=exported,
+                )
+            )
 
         dialog.connect("response", on_response)
         self._sync_dialog = dialog

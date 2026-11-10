@@ -293,6 +293,39 @@ class NoteStore:
         self.save(note)
         return note.folder
 
+    def rename_folder(self, old_name: str, new_name: str) -> int:
+        """Перейменувати папку, зберігши всі нотатки та id.
+
+        Якщо нова папка вже існує, нотатки обох папок об'єднуються.
+        Повертає кількість переміщених нотаток.
+        """
+        old_folder = self._safe_folder(old_name)
+        new_folder = self._safe_folder(new_name)
+        if not old_folder or not new_folder:
+            raise ValueError("Folder name is empty")
+        if old_folder == new_folder:
+            return 0
+
+        old_path = self._folder_path(old_folder)
+        new_path = self._folder_path(new_folder)
+        if not old_path.is_dir():
+            raise ValueError(f"Folder does not exist: {old_folder}")
+        if new_path.is_relative_to(old_path):
+            raise ValueError("New folder cannot be inside the old folder")
+
+        moved = 0
+        for note in self.load():
+            if note.folder != old_folder and not note.folder.startswith(old_folder + "/"):
+                continue
+            suffix = note.folder[len(old_folder):].lstrip("/")
+            note.folder = f"{new_folder}/{suffix}" if suffix else new_folder
+            self.save(note)
+            moved += 1
+
+        new_path.mkdir(parents=True, exist_ok=True)
+        self._remove_empty_folder(old_path)
+        return moved
+
     def delete_folder(self, folder: str) -> int:
         """Видалити папку, перенісши всі її нотатки в корінь.
 
@@ -474,6 +507,8 @@ class NoteStore:
             raise ValueError("Target folder must be different from notes")
         if target.is_relative_to(self.root):
             raise ValueError("Target folder cannot be inside notes")
+        if self.root.is_relative_to(target):
+            raise ValueError("Target folder cannot contain the notes folder")
 
         shutil.copytree(
             self.root,
@@ -482,6 +517,83 @@ class NoteStore:
             ignore=shutil.ignore_patterns(".backups", "*.tmp"),
         )
         return target
+
+    def sync_two_way(self, other: Path | str) -> tuple[int, int, int]:
+        """Об'єднати нотатки з іншою текою в обидва боки.
+
+        Нотатки впізнаються за стабільним ``id`` у front matter, а не за
+        назвою файлу. Для однакового id перемагає новіша версія за
+        ``updated_at``. Нотатки, яких немає з одного боку, додаються.
+        Видалення під час такого merge не поширюються — для захисту від
+        випадкової втрати даних.
+
+        Повертає ``(imported, updated, exported)``: скільки нотаток
+        додано з іншої теки, оновлено з неї та відправлено туди.
+        """
+        other = Path(other).expanduser().resolve()
+        if other == self.root:
+            raise ValueError("Sync folder must be different from notes")
+        if other.is_relative_to(self.root):
+            raise ValueError("Sync folder cannot be inside notes")
+        if self.root.is_relative_to(other):
+            raise ValueError("Sync folder cannot contain the notes folder")
+
+        other_store = NoteStore(other)
+        local_notes = {note.id: note for note in self.load()}
+        other_notes = {note.id: note for note in other_store.load()}
+
+        imported = 0
+        updated = 0
+        exported = 0
+
+        for note_id, remote in other_notes.items():
+            local = local_notes.get(note_id)
+            if local is None:
+                self.save(self._copy_note(remote))
+                imported += 1
+            elif remote.updated_at > local.updated_at:
+                self.save(self._copy_note(remote, path=local.path))
+                updated += 1
+
+        for note_id, local in local_notes.items():
+            remote = other_notes.get(note_id)
+            if remote is None:
+                other_store.save(self._copy_note(local))
+                exported += 1
+            elif local.updated_at > remote.updated_at:
+                other_store.save(self._copy_note(local, path=remote.path))
+                exported += 1
+
+        # Картинки спільні для обох тек: спочатку забираємо відсутні з
+        # іншої теки, потім відправляємо туди локальні.
+        if other_store.assets_dir.is_dir():
+            shutil.copytree(
+                other_store.assets_dir,
+                self.assets_dir,
+                dirs_exist_ok=True,
+            )
+        if self.assets_dir.is_dir():
+            shutil.copytree(
+                self.assets_dir,
+                other_store.assets_dir,
+                dirs_exist_ok=True,
+            )
+
+        return imported, updated, exported
+
+    @staticmethod
+    def _copy_note(note: Note, path: Path | None = None) -> Note:
+        """Створити відв'язану копію нотатки для запису в іншу теку."""
+        return Note(
+            id=note.id,
+            label=note.label,
+            contents=note.contents,
+            updated_at=note.updated_at,
+            tags=list(note.tags),
+            folder=note.folder,
+            pinned=bool(note.pinned),
+            path=path,
+        )
 
     # ------------------------------------------------------------------
     # Приватні методи
@@ -631,10 +743,15 @@ class NoteStore:
             return
         if folder == self.root:
             return
-        try:
-            folder.rmdir()
-        except OSError:
-            pass
+        # Спочатку прибираємо порожні вкладені теки, потім саму папку.
+        # rmdir не видаляє непорожню теку, тому нотатки в ній безпечні.
+        candidates = [path for path in folder.rglob("*") if path.is_dir()]
+        candidates.append(folder)
+        for candidate in sorted(candidates, key=lambda item: len(item.parts), reverse=True):
+            try:
+                candidate.rmdir()
+            except OSError:
+                pass
 
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:

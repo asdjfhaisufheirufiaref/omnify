@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -124,6 +125,35 @@ class NoteStoreTests(unittest.TestCase):
             self.assertFalse(asset.exists())
             self.assertFalse(asset.parent.exists())
 
+    def test_rename_folder_moves_notes_and_preserves_nested_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            root_note = Note(label="Root", contents="Root text", folder="Work")
+            child_note = Note(label="Child", contents="Child text", folder="Work/Sub")
+            other_note = Note(label="Other", contents="Other text", folder="Personal")
+            for note in (root_note, child_note, other_note):
+                store.save(note)
+            old_root_path = root_note.path
+            old_child_path = child_note.path
+
+            moved = store.rename_folder("Work", "Projects")
+
+            self.assertEqual(moved, 2)
+            self.assertFalse(old_root_path.exists())
+            self.assertFalse(old_child_path.exists())
+            loaded = {note.label: note for note in store.load()}
+            self.assertEqual(loaded["Root"].folder, "Projects")
+            self.assertEqual(loaded["Child"].folder, "Projects/Sub")
+            self.assertEqual(loaded["Other"].folder, "Personal")
+            self.assertEqual(loaded["Root"].id, root_note.id)
+
+    def test_rename_folder_rejects_child_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            store.create_folder("Work")
+            with self.assertRaises(ValueError):
+                store.rename_folder("Work", "Work/Inside")
+
     def test_delete_folder_moves_notes_to_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             store = NoteStore(temporary)
@@ -170,6 +200,63 @@ class NoteStoreTests(unittest.TestCase):
             self.assertEqual(restored, 1)
             self.assertTrue(any(store.root.rglob("*.md")))
             self.assertTrue(any(store.assets_dir.rglob("*.png")))
+
+    def test_two_way_sync_imports_and_exports_newer_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            local = NoteStore(base / "local")
+            remote = NoteStore(base / "remote")
+
+            shared = Note(label="Shared", contents="old local")
+            local.save(shared)
+            time.sleep(0.01)
+            remote.save(
+                Note(
+                    id=shared.id,
+                    label="Shared",
+                    contents="old remote",
+                )
+            )
+            time.sleep(0.01)
+            shared.contents = "new local"
+            local.save(shared)
+            time.sleep(0.01)
+            remote.save(Note(label="Remote only", contents="from remote"))
+            time.sleep(0.01)
+            local.save(Note(label="Local only", contents="from local"))
+
+            imported, updated, exported = local.sync_two_way(remote.root)
+
+            self.assertEqual(imported, 1)
+            self.assertEqual(updated, 0)
+            self.assertEqual(exported, 2)
+            local_notes = {note.label: note for note in local.load()}
+            remote_notes = {note.label: note for note in remote.load()}
+            self.assertEqual(local_notes["Remote only"].contents, "from remote")
+            self.assertEqual(remote_notes["Local only"].contents, "from local")
+            self.assertEqual(remote_notes["Shared"].contents, "new local")
+
+    def test_two_way_sync_lets_newer_remote_note_win(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            local = NoteStore(base / "local")
+            remote = NoteStore(base / "remote")
+            shared = Note(label="Shared", contents="old local")
+            local.save(shared)
+            time.sleep(0.01)
+            remote.save(
+                Note(
+                    id=shared.id,
+                    label="Shared",
+                    contents="new remote",
+                )
+            )
+
+            imported, updated, exported = local.sync_two_way(remote.root)
+
+            self.assertEqual((imported, updated, exported), (0, 1, 0))
+            self.assertEqual(local.load()[0].contents, "new remote")
+            self.assertEqual(remote.load()[0].contents, "new remote")
 
 
 if __name__ == "__main__":

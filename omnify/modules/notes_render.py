@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import quote
 
 # Регулярні вирази для розпізнавання блоків Markdown.
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.*)$")
@@ -492,6 +493,80 @@ def export_html(note, store, destination: Path | str) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(note_to_html(note, store), encoding="utf-8")
     return destination
+
+
+def _bundle_file_name(note) -> str:
+    """Безпечне унікальне ім'я HTML-файлу для експорту всіх нотаток."""
+    label = re.sub(r"[^\w .-]", "", note.label or "", flags=re.UNICODE)
+    label = re.sub(r"\s+", "-", label).strip("-._")[:60] or "note"
+    note_id = re.sub(r"[^0-9A-Za-z_-]", "", str(note.id))[:12] or "note"
+    return f"{label}--{note_id}.html"
+
+
+def export_bundle_html(notes: Iterable, store, destination: Path | str) -> tuple[Path, int]:
+    """Експортувати всі нотатки в теку: окремі HTML-файли та index.html.
+
+    Кожна сторінка автономна, а index.html містить зміст зі згрупованими
+    нотатками. Картинки вбудовуються в HTML, тому теку можна надіслати
+    або відкрити без папки notes.
+    """
+    destination = Path(destination).expanduser()
+    destination.mkdir(parents=True, exist_ok=True)
+    notes = list(notes)
+    entries: list[str] = []
+
+    for note in notes:
+        filename = _bundle_file_name(note)
+        export_html(note, store, destination / filename)
+        tags = ""
+        if note.tags:
+            tags = '<span class="entry-tags">' + "".join(
+                f"#{_escape_html(tag)} " for tag in note.tags
+            ) + "</span>"
+        folder = (
+            f'<span class="entry-folder">📁 {_escape_html(note.folder)}</span>'
+            if note.folder
+            else ""
+        )
+        entries.append(
+            '<li class="entry">'
+            f'<a href="{quote(filename)}">{_escape_html(note.label or "Untitled")}</a>'
+            f"{tags}{folder}</li>"
+        )
+
+    if entries:
+        listing = "<ul>" + "".join(entries) + "</ul>"
+    else:
+        listing = "<p>No notes yet.</p>"
+
+    index = f"""<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omnify Notes</title>
+<style>
+:root {{ color-scheme: light dark; }}
+body {{ font-family: system-ui, sans-serif; line-height: 1.5;
+       max-width: 860px; margin: 40px auto; padding: 0 24px; }}
+h1 {{ font-size: 2em; }}
+ul {{ padding-left: 1.3em; }}
+.entry {{ margin: .55em 0; }}
+a {{ color: #2b6cb0; font-weight: 600; }}
+.entry-tags {{ margin-left: .5em; color: #777; font-size: .85em; }}
+.entry-folder {{ margin-left: .5em; color: #777; font-size: .85em; }}
+</style>
+</head>
+<body>
+<h1>Omnify Notes</h1>
+<p>{len(notes)} notes</p>
+{listing}
+</body>
+</html>
+"""
+    index_path = destination / "index.html"
+    index_path.write_text(index, encoding="utf-8")
+    return index_path, len(notes)
 
 
 # ----------------------------------------------------------------------
