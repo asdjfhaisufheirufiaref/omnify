@@ -533,6 +533,53 @@ button:disabled { opacity: 0.55; }
     border-color: var(--omnify-accent);
 }
 
+/* Компактна панель Markdown-форматування над редактором. */
+.notes-format-bar {
+    background: transparent;
+    padding: 0;
+}
+.notes-format-button {
+    background: transparent;
+    background-image: none;
+    border: 1px solid transparent;
+    box-shadow: none;
+    border-radius: 6px;
+    min-width: 26px;
+    min-height: 26px;
+    padding: 0 5px;
+    color: var(--omnify-fg-dim);
+    font-size: 0.9em;
+}
+.notes-format-button:hover {
+    background: var(--omnify-bg-hover);
+    border-color: var(--omnify-border);
+    color: var(--omnify-fg);
+}
+.notes-format-button:active {
+    background: var(--omnify-accent-soft);
+    color: var(--omnify-accent);
+}
+.notes-format-bold {
+    font-weight: 700;
+}
+.notes-format-italic {
+    font-style: italic;
+}
+.notes-format-strike {
+    text-decoration: line-through;
+}
+
+/* Рядок із кількістю слів і станом збереження. */
+.notes-status {
+    font-size: 0.8em;
+}
+
+/* Закріплені нотатки мають маленький значок біля назви. */
+.notes-row-pin {
+    color: var(--omnify-accent);
+    font-size: 0.78em;
+}
+
 /* Рядки тегів і папок у списку нотаток. */
 .notes-row-tags {
     color: var(--omnify-accent);

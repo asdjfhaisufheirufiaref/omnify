@@ -126,6 +126,9 @@ class Note:
     # Папка нотатки відносно notes/. Порожній рядок = корінь notes/.
     folder: str = ""
 
+    # Закріплена нотатка показується на початку списку.
+    pinned: bool = False
+
     # Фізичний шлях до .md-файлу. У JSON він не зберігається, бо залежить
     # від комп'ютера. ``compare=False`` не включає шлях у порівняння.
     path: Path | None = field(default=None, repr=False, compare=False)
@@ -139,11 +142,17 @@ class Note:
             "updated_at": self.updated_at,
             "tags": list(self.tags),
             "folder": self.folder,
+            "pinned": bool(self.pinned),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Note":
         """Створити нотатку зі словника (міграція старого notes.json)."""
+        raw_pinned = data.get("pinned", False)
+        if isinstance(raw_pinned, str):
+            pinned = raw_pinned.strip().casefold() in {"1", "true", "yes", "on"}
+        else:
+            pinned = bool(raw_pinned)
         return cls(
             id=str(data.get("id") or uuid4().hex),
             label=str(data.get("label") or "Untitled"),
@@ -151,6 +160,7 @@ class Note:
             updated_at=str(data.get("updated_at") or _now()),
             tags=_normalise_tags(data.get("tags")),
             folder=str(data.get("folder") or ""),
+            pinned=pinned,
         )
 
 
@@ -197,8 +207,11 @@ class NoteStore:
             note.folder = relative.parent.as_posix() if relative.parent != Path(".") else ""
             notes.append(note)
 
-        # Новіші нотатки показуємо першими.
-        notes.sort(key=lambda note: note.updated_at, reverse=True)
+        # Закріплені нотатки завжди зверху; усередині груп — новіші першими.
+        notes.sort(
+            key=lambda note: (bool(note.pinned), note.updated_at),
+            reverse=True,
+        )
         return notes
 
     def save(self, note: Note) -> None:
@@ -218,6 +231,7 @@ class NoteStore:
             f"id: {note.id}\n"
             f"title: {json.dumps(note.label, ensure_ascii=False)}\n"
             f"tags: {json.dumps(note.tags, ensure_ascii=False)}\n"
+            f"pinned: {'true' if note.pinned else 'false'}\n"
             f"updated_at: {note.updated_at}\n"
             "---\n"
             f"{note.contents}"
@@ -518,6 +532,13 @@ class NoteStore:
                 decoded = tags_value
             tags = _normalise_tags(decoded)
 
+        pinned = metadata.get("pinned", "").strip().casefold() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
         return Note(
             id=note_id,
             label=title,
@@ -525,6 +546,7 @@ class NoteStore:
             updated_at=updated_at,
             tags=tags,
             folder="",
+            pinned=pinned,
             path=path,
         )
 

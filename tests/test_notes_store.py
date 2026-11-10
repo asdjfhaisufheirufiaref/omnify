@@ -92,6 +92,20 @@ class NoteStoreTests(unittest.TestCase):
             self.assertEqual(loaded.folder, "Work")
             self.assertEqual(store.folders(), ["Work"])
 
+    def test_pinned_flag_roundtrips_and_sorts_notes_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            older = Note(label="Older", contents="Text", pinned=True)
+            store.save(older)
+            newer = Note(label="Newer", contents="Text")
+            store.save(newer)
+
+            loaded = store.load()
+            self.assertTrue(loaded[0].pinned)
+            self.assertEqual(loaded[0].id, older.id)
+            self.assertFalse(loaded[1].pinned)
+            self.assertIn("pinned: true", older.path.read_text(encoding="utf-8"))
+
     def test_delete_removes_note_and_its_image_assets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

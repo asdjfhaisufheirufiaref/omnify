@@ -81,6 +81,7 @@ class NotesModule(BaseModule):
 
         # Підписи рядків, щоб оновлювати назву без перебудови всього списку.
         self._row_labels: dict[str, Gtk.Label] = {}
+        self._row_pins: dict[str, Gtk.Label] = {}
         self._row_tags: dict[str, Gtk.Label] = {}
         self._row_folders: dict[str, Gtk.Label] = {}
 
@@ -219,6 +220,15 @@ class NotesModule(BaseModule):
         title_entry.set_hexpand(True)
         editor_header.append(title_entry)
 
+        # Закріплена нотатка завжди стоїть зверху списку. Це не копія і не
+        # окремий файл — у Markdown просто з'являється поле pinned: true.
+        pin_button = Gtk.ToggleButton(label="📌")
+        pin_button.set_tooltip_text("Pin note")
+        pin_button.get_style_context().add_class("notes-icon-button")
+        pin_button.connect("toggled", self._on_pin_note_toggled)
+        editor_header.append(pin_button)
+        self._pin_button = pin_button
+
         # Кнопка вибору картинки з файлу. Ctrl+V працює і без неї.
         image_button = Gtk.Button(label="🖼")
         image_button.set_tooltip_text("Insert image (Ctrl+V)")
@@ -296,6 +306,36 @@ class NotesModule(BaseModule):
         self._note_folder_popover_box = note_folder_popover_box
         self._preview_toggle = preview_toggle
 
+        # Панель форматування: ці кнопки працюють із виділеним текстом
+        # або вставляють Markdown-шаблон у позицію курсора.
+        format_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        format_bar.get_style_context().add_class("notes-format-bar")
+
+        format_actions = [
+            ("B", "Bold (Ctrl+B)", "bold", "notes-format-bold"),
+            ("I", "Italic (Ctrl+I)", "italic", "notes-format-italic"),
+            ("S", "Strikethrough", "strike", "notes-format-strike"),
+            ("H", "Heading", "heading", ""),
+            ("•", "Bullet list", "bullet", ""),
+            ("1.", "Numbered list", "numbered", ""),
+            ("❝", "Quote", "quote", ""),
+            ("</>", "Inline code", "code", ""),
+            ("🔗", "Link (Ctrl+K)", "link", ""),
+        ]
+        for label, tooltip, action, style_class in format_actions:
+            button = Gtk.Button(label=label)
+            button.set_tooltip_text(tooltip)
+            button.get_style_context().add_class("notes-format-button")
+            if style_class:
+                button.get_style_context().add_class(style_class)
+            button.connect(
+                "clicked",
+                lambda _button, action=action: self._format_selection(action),
+            )
+            format_bar.append(button)
+        editor.append(format_bar)
+        self._format_bar = format_bar
+
         # Stack перемикає edit/preview, не втрачаючи текст у буфері.
         editor_stack = Gtk.Stack()
         editor_stack.set_hexpand(True)
@@ -338,6 +378,21 @@ class NotesModule(BaseModule):
         preview_scroll.set_child(preview_host)
         editor_stack.add_named(preview_scroll, "preview")
         editor.append(editor_stack)
+
+        # Нижній рядок показує приблизну кількість слів і стан збереження.
+        # Це допомагає не переживати, чи справді текст уже записано.
+        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        stats_label = Gtk.Label(label="0 words · 0 characters", xalign=0.0)
+        stats_label.set_hexpand(True)
+        stats_label.get_style_context().add_class("omnify-dim")
+        stats_label.get_style_context().add_class("notes-status")
+        status_row.append(stats_label)
+
+        save_status_label = Gtk.Label(label=tr("Saved"), xalign=1.0)
+        save_status_label.get_style_context().add_class("omnify-dim")
+        save_status_label.get_style_context().add_class("notes-status")
+        status_row.append(save_status_label)
+        editor.append(status_row)
         root.set_end_child(editor)
 
         # Зберігаємо посилання на віджети, щоб інші методи могли їх знайти.
@@ -346,6 +401,8 @@ class NotesModule(BaseModule):
         self._body_view = body
         self._editor_stack = editor_stack
         self._preview_host = preview_host
+        self._stats_label = stats_label
+        self._save_status_label = save_status_label
 
         # Завантажуємо файли ДО підключення сигналів "changed" і
         # "row-selected": інакше саме завантаження виглядало б як
@@ -577,6 +634,7 @@ class NotesModule(BaseModule):
         self._rows_by_id.clear()
         self._row_ids.clear()
         self._row_labels.clear()
+        self._row_pins.clear()
         self._row_tags.clear()
         self._row_folders.clear()
 
@@ -643,6 +701,8 @@ class NotesModule(BaseModule):
         self._save_timer = None
         self._sync_current_note()
         self._save_current_note()
+        self._update_note_stats()
+        self._set_save_status(tr("Saved"))
         return False
 
     def save_state(self) -> None:
@@ -681,9 +741,17 @@ class NotesModule(BaseModule):
         row_box.set_margin_start(8)
         row_box.set_margin_end(8)
 
+        title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        pin_label = Gtk.Label(label="📌")
+        pin_label.get_style_context().add_class("notes-row-pin")
+        pin_label.set_visible(bool(note.pinned))
+        title_row.append(pin_label)
+
         title_label = Gtk.Label(label=note.label or "Untitled", xalign=0.0)
         title_label.set_ellipsize(Pango.EllipsizeMode.END)
-        row_box.append(title_label)
+        title_label.set_hexpand(True)
+        title_row.append(title_label)
+        row_box.append(title_row)
 
         tags_label = Gtk.Label(xalign=0.0)
         tags_label.get_style_context().add_class("notes-row-tags")
@@ -700,6 +768,7 @@ class NotesModule(BaseModule):
         # Запам'ятовуємо зв'язок між віджетом і нотаткою.
         self._row_ids[row] = note.id
         self._row_labels[note.id] = title_label
+        self._row_pins[note.id] = pin_label
         self._row_tags[note.id] = tags_label
         self._row_folders[note.id] = folder_label
         self._update_row_tags(note)
@@ -743,6 +812,10 @@ class NotesModule(BaseModule):
             self._load_note_into_buffer(note)
             self._title_entry.set_text(note.label or "Untitled")
             self._tag_entry.set_text(", ".join(note.tags))
+            self._pin_button.set_active(bool(note.pinned))
+            self._pin_button.set_tooltip_text(
+                tr("Unpin note") if note.pinned else tr("Pin note")
+            )
             self._note_folder_button.set_tooltip_text(
                 tr("Move note to folder: {folder}", folder=note.folder or tr("Unfiled"))
             )
@@ -752,6 +825,8 @@ class NotesModule(BaseModule):
         finally:
             # Навіть якщо сталася помилка, не залишаємо прапорець увімкненим.
             self._loading = False
+        self._update_note_stats()
+        self._set_save_status(tr("Saved"))
         self._notes_list.select_row(self._rows_by_id.get(note.id))
 
     def _load_note_into_buffer(self, note: Note) -> None:
@@ -909,7 +984,23 @@ class NotesModule(BaseModule):
 
         if self._preview_toggle.get_active():
             self._refresh_preview()
+        self._set_save_status(tr("Saving…"))
         self._schedule_save()
+
+    def _on_pin_note_toggled(self, button) -> None:
+        """Закріпити або відкріпити поточну нотатку."""
+        if self._loading or self._current_note is None:
+            return
+
+        note = self._current_note
+        self._sync_current_note()
+        note.pinned = bool(button.get_active())
+        self._save_current_note()
+        self.ctx.notify(tr("Note pinned") if note.pinned else tr("Note unpinned"))
+
+        # Після зміни прапорця список треба пересортувати: закріплені
+        # нотатки завжди мають бути зверху.
+        self._reload_notes_from_store(note.id)
 
     def _on_tags_changed(self, entry) -> None:
         """Користувач змінив теги через кому."""
@@ -920,13 +1011,58 @@ class NotesModule(BaseModule):
         self._refresh_visibility()
         if self._preview_toggle.get_active():
             self._refresh_preview()
+        self._set_save_status(tr("Saving…"))
         self._schedule_save()
 
     def _on_body_changed(self, _buffer) -> None:
         """Користувач щось змінив у тексті або вставив картинку."""
         if self._loading or self._current_note is None:
             return
+        self._set_save_status(tr("Saving…"))
+        self._update_note_stats()
         self._schedule_save()
+
+    @staticmethod
+    def _count_words(text: str) -> int:
+        """Порахувати слова приблизно, ігноруючи Markdown-розмітку.
+
+        Це саме допоміжний показник, а не точний лінгвістичний підрахунок:
+        посилання, картинки та символи форматування не повинні роздувати
+        цифру.
+        """
+        plain = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+        plain = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", plain)
+        plain = re.sub(r"https?://\S+", " ", plain)
+        plain = re.sub(r"[#>*_`~\-]+", " ", plain)
+        return len(re.findall(r"\w+", plain, flags=re.UNICODE))
+
+    def _update_note_stats(self) -> None:
+        """Оновити підпис із кількістю слів і символів."""
+        label = getattr(self, "_stats_label", None)
+        if label is None:
+            return
+        if self._current_note is None or getattr(self, "_body_view", None) is None:
+            label.set_text(tr("0 words · 0 characters"))
+            return
+        buffer = self._body_view.get_buffer()
+        text = buffer.get_text(
+            buffer.get_start_iter(),
+            buffer.get_end_iter(),
+            True,
+        )
+        label.set_text(
+            tr(
+                "{words} words · {chars} characters",
+                words=self._count_words(text),
+                chars=len(text),
+            )
+        )
+
+    def _set_save_status(self, status: str) -> None:
+        """Показати, чи нотатка вже записана на диск."""
+        label = getattr(self, "_save_status_label", None)
+        if label is not None:
+            label.set_text(status)
 
     def _on_search_changed(self, entry) -> None:
         """Показати лише нотатки, які містять пошуковий запит."""
@@ -953,6 +1089,100 @@ class NotesModule(BaseModule):
         end_iter = buffer.get_iter_at_mark(buffer.get_insert())
         buffer.place_cursor(end_iter)
         self._body_view.scroll_to_iter(end_iter, 0.0, False, 0.0, 0.0)
+        self._body_view.grab_focus()
+        self._schedule_save()
+
+    def _format_selection(self, action: str) -> None:
+        """Застосувати просте Markdown-форматування до виділення.
+
+        Для жирного/курсиву/закреслення/коду текст обгортається з двох
+        боків. Для заголовка, списку та цитати префікс додається на
+        початок кожного вибраного рядка. Це маленький редактор, а не
+        повноцінний WYSIWYG: у файлі завжди залишається звичайний Markdown.
+        """
+        if self._current_note is None:
+            return
+        if self._preview_toggle.get_active():
+            self._preview_toggle.set_active(False)
+
+        buffer = self._body_view.get_buffer()
+        has_selection = buffer.get_has_selection()
+        start = end = None
+        if has_selection:
+            start, end = buffer.get_selection_bounds()
+
+        wrappers = {
+            "bold": ("**", "**", "text"),
+            "italic": ("*", "*", "text"),
+            "strike": ("~~", "~~", "text"),
+            "code": ("`", "`", "code"),
+            "link": ("[", "](https://)", "text"),
+        }
+        line_prefixes = {
+            "heading": "# ",
+            "bullet": "- ",
+            "numbered": "1. ",
+            "quote": "> ",
+        }
+
+        buffer.begin_user_action()
+        try:
+            if action in wrappers:
+                left, right, placeholder = wrappers[action]
+                if has_selection and start is not None and end is not None:
+                    selected = buffer.get_text(start, end, True)
+                    buffer.delete(start, end)
+                    buffer.insert_at_cursor(left + selected + right)
+                    text_end = buffer.get_iter_at_mark(buffer.get_insert())
+                    text_end.backward_chars(len(right))
+                    text_start = text_end.copy()
+                    text_start.backward_chars(len(selected))
+                    if action == "link":
+                        # Після посилання зручно одразу замінити URL.
+                        url_end = buffer.get_iter_at_mark(buffer.get_insert())
+                        url_end.backward_chars(1)  # перед символом ")"
+                        url_start = url_end.copy()
+                        url_start.backward_chars(len("https://"))
+                        buffer.select_range(url_start, url_end)
+                    else:
+                        buffer.select_range(text_start, text_end)
+                else:
+                    buffer.insert_at_cursor(left + placeholder + right)
+                    text_end = buffer.get_iter_at_mark(buffer.get_insert())
+                    text_end.backward_chars(len(right))
+                    text_start = text_end.copy()
+                    text_start.backward_chars(len(placeholder))
+                    buffer.select_range(text_start, text_end)
+            elif action in line_prefixes:
+                prefix = line_prefixes[action]
+                if has_selection and start is not None and end is not None:
+                    selected = buffer.get_text(start, end, True)
+                    formatted = "\n".join(
+                        prefix + line if line.strip() else line
+                        for line in selected.split("\n")
+                    )
+                    buffer.delete(start, end)
+                    buffer.insert_at_cursor(formatted)
+                else:
+                    cursor = buffer.get_iter_at_mark(buffer.get_insert())
+                    line_start = buffer.get_iter_at_line(cursor.get_line())
+                    line_end = line_start.copy()
+                    line_end.forward_to_line_end()
+                    line_text = buffer.get_text(line_start, line_end, True)
+                    if line_text.startswith(prefix):
+                        # Повторне натискання прибирає форматування.
+                        remove_end = line_start.copy()
+                        remove_end.forward_chars(len(prefix))
+                        buffer.delete(line_start, remove_end)
+                    else:
+                        buffer.insert(line_start, prefix)
+            else:
+                return
+        finally:
+            buffer.end_user_action()
+
+        cursor = buffer.get_iter_at_mark(buffer.get_insert())
+        self._body_view.scroll_to_iter(cursor, 0.0, False, 0.0, 0.0)
         self._body_view.grab_focus()
         self._schedule_save()
 
@@ -1383,6 +1613,19 @@ class NotesModule(BaseModule):
         is_v = keyval in (Gdk.KEY_v, Gdk.KEY_V)
         has_control = bool(state & Gdk.ModifierType.CONTROL_MASK)
         has_shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+
+        # Швидкі клавіші форматування. Працюють лише без Shift, щоб не
+        # перехоплювати системні комбінації на кшталт Ctrl+Shift+V.
+        if has_control and not has_shift and self._current_note is not None:
+            shortcuts = {
+                Gdk.KEY_b: "bold",
+                Gdk.KEY_i: "italic",
+                Gdk.KEY_k: "link",
+            }
+            action = shortcuts.get(Gdk.keyval_to_lower(keyval))
+            if action is not None:
+                self._format_selection(action)
+                return True
 
         # Ctrl+Shift+V зазвичай означає "вставити як звичайний текст",
         # тому не забираємо цю комбінацію в себе.
