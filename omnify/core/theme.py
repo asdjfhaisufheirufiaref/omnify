@@ -516,6 +516,119 @@ button:disabled { opacity: 0.55; }
     padding: 4px;
 }
 
+/* Кнопка-фільтр папок у бічній панелі Notes. */
+.notes-folder-button {
+    border-radius: 8px;
+    min-height: 30px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--omnify-border);
+    color: var(--omnify-fg);
+}
+.notes-folder-button:hover {
+    background: var(--omnify-bg-hover);
+}
+.notes-folder-button:checked {
+    background: var(--omnify-accent-soft);
+    border-color: var(--omnify-accent);
+}
+
+/* Рядки тегів і папок у списку нотаток. */
+.notes-row-tags {
+    color: var(--omnify-accent);
+    font-size: 0.82em;
+}
+.notes-row-folder {
+    color: var(--omnify-fg-dim);
+    font-size: 0.82em;
+}
+
+/* Пункти випадаючих меню Notes. */
+.notes-menu-item {
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 7px 10px;
+    min-height: 0;
+}
+.notes-menu-item:hover {
+    background: var(--omnify-bg-hover);
+}
+
+/* Попередній перегляд Markdown. */
+.notes-preview-title {
+    font-size: 1.9em;
+    font-weight: 700;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.notes-preview-tags {
+    margin-bottom: 8px;
+}
+.notes-preview-h1 {
+    font-size: 1.7em;
+    font-weight: 700;
+    margin-top: 12px;
+}
+.notes-preview-h2 {
+    font-size: 1.45em;
+    font-weight: 700;
+    margin-top: 10px;
+}
+.notes-preview-h3 {
+    font-size: 1.25em;
+    font-weight: 700;
+    margin-top: 8px;
+}
+.notes-preview-h4,
+.notes-preview-h5,
+.notes-preview-h6 {
+    font-size: 1.08em;
+    font-weight: 700;
+    margin-top: 7px;
+}
+.notes-preview-text,
+.notes-preview-list {
+    font-size: 1.02em;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+.notes-preview-list {
+    margin-left: 8px;
+}
+.notes-preview-quote {
+    border-left: 3px solid var(--omnify-accent);
+    padding-left: 12px;
+    color: var(--omnify-fg-dim);
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.notes-preview-code {
+    font-family: monospace;
+    background: var(--omnify-bg-alt);
+    border: 1px solid var(--omnify-border);
+    border-radius: 6px;
+}
+.notes-preview-table {
+    border: 1px solid var(--omnify-border);
+    border-radius: 8px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+.notes-preview-cell,
+.notes-preview-cell-head {
+    background: var(--omnify-bg-raised);
+}
+.notes-preview-cell-head {
+    font-weight: 700;
+    background: var(--omnify-bg-alt);
+}
+.notes-preview-missing,
+.notes-preview-muted {
+    color: var(--omnify-fg-dim);
+}
+
 /* Sidebar */
 .omnify-sidebar {
     background: var(--omnify-bg-alt);

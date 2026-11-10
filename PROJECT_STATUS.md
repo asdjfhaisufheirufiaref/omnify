@@ -1,17 +1,18 @@
 # Omnify — v1 status and Notes handoff
 
-Updated: 2026-11-05. This file is the handoff source of truth for the
+Updated: 2026-11-08. This file is the handoff source of truth for the
 next session.
 
 ## v1 state
 
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
-themes, EN↔UA localization, the standalone browser and the basic Notes
-module are implemented. The full headless suite is green: **414 tests**.
+themes, EN↔UA localization, the standalone browser and the Notes
+module are implemented. The full headless suite is green: **422 tests**.
 
-Not built yet: native phone sync and optional later tools such as a file
-manager or mail.
+Not built yet: cloud/native phone sync (notes are local files, and the
+in-app sync is a one-way copy to a folder chosen by the user) and
+optional later tools such as a file manager or mail.
 
 ## Run and install
 
@@ -125,25 +126,44 @@ importer for the complete transfer.
 The Notes module is implemented:
 
 - each note is a Markdown file under `notes/` in the project root;
-- notes have YAML-style front matter with a stable id, title and timestamp;
-- list/search, create, select and edit notes;
+- notes have YAML-style front matter with a stable id, title, tags and
+  timestamp;
+- notes can live in one-level folders under `notes/`; the sidebar filters by
+  folder and can create folders or delete one (its notes move to **Unfiled**
+  rather than being deleted);
+- list/search, create, select, edit and delete notes; deleting a note also
+  removes its images after confirmation;
+- tags are edited as a comma-separated line and are searchable with `#tag`;
+- checklists and tables can be inserted with toolbar buttons; Markdown
+  checklists and pipe tables are rendered in preview and in exports;
+- **Preview** renders headings, paragraphs, lists, checklists, tables, code,
+  links, images and tags without WebKit;
+- export to standalone HTML (images embedded as base64) and PDF through
+  cairo/Pango;
 - autosave with a debounce timer; the previous note is flushed when switching;
-- last selected note restored on restart;
+- last selected note and folder filter restored on restart;
 - images are copied to `notes/assets/<note-id>/` and inserted as relative
   Markdown links (`![alt](assets/...)`);
 - local images are rendered inline in the editor; the Markdown link is
   reconstructed when the note is saved;
 - Ctrl+V inserts a clipboard image when it contains PNG/JPEG/WebP data;
+- ZIP backups can be created manually or automatically once per day; backups
+  are kept under `~/.local/share/omnify/backups/` (last 10 retained);
+- **Sync notes to folder…** copies the notes tree one-way to a folder chosen
+  by the user (for example a Syncthing/Dropbox folder); it does not merge
+  changes back from that folder;
+- **Restore backup…** merges a ZIP backup into the current notes and creates
+  a safety backup first;
 - legacy notes from `notes.json` are migrated automatically on first launch;
 - `notes/` is ignored by Git;
-- model and file store covered by `tests/test_notes_engine.py` and
-  `tests/test_notes_store.py`;
+- model, file store and renderer covered by `tests/test_notes_engine.py`,
+  `tests/test_notes_store.py` and `tests/test_notes_render.py`;
 - registered in `omnify/modules/__init__.py`.
 
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **414 OK**
+- `python3 -m unittest discover -s tests` → **422 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance
