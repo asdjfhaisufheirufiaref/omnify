@@ -307,6 +307,19 @@ class NotesModule(BaseModule):
         tags_entry.set_placeholder_text("work, ideas")
         tags_entry.set_hexpand(True)
         tags_entry.connect("changed", self._on_tags_changed)
+
+        # Підказки тегів: користувач бачить уже відомі теги й не робить
+        # дублікатів через одрук.
+        tag_completion_model = Gtk.ListStore(str)
+        tag_completion = Gtk.EntryCompletion()
+        tag_completion.set_model(tag_completion_model)
+        tag_completion.set_text_column(0)
+        tag_completion.set_inline_completion(True)
+        tag_completion.set_popup_completion(True)
+        tag_completion.set_minimum_key_length(1)
+        tags_entry.set_completion(tag_completion)
+        self._tag_completion_model = tag_completion_model
+
         tags_row.append(tags_entry)
 
         note_folder_button = Gtk.MenuButton(label="📁")
@@ -1396,6 +1409,7 @@ class NotesModule(BaseModule):
         box.append(all_button)
 
         counts = self._tag_counts()
+        self._refresh_tag_completion(counts)
         if not counts:
             empty = Gtk.Label(label=tr("No tags yet"), xalign=0.0)
             empty.get_style_context().add_class("omnify-dim")
@@ -1414,6 +1428,16 @@ class NotesModule(BaseModule):
                 box.append(button)
 
         self._refresh_tag_button()
+
+    def _refresh_tag_completion(self, counts: list[tuple[str, int]] | None = None) -> None:
+        """Оновити підказки для поля тегів."""
+        model = getattr(self, "_tag_completion_model", None)
+        if model is None:
+            return
+        values = counts if counts is not None else self._tag_counts()
+        model.clear()
+        for tag, _count in values:
+            model.append([tag])
 
     def _filter_by_tag(self, tag: str) -> None:
         """Підставити #тег у поле пошуку й закрити меню."""
@@ -1824,6 +1848,18 @@ class NotesModule(BaseModule):
 
         # Швидкі клавіші форматування. Працюють лише без Shift, щоб не
         # перехоплювати системні комбінації на кшталт Ctrl+Shift+V.
+        if has_control and not has_shift:
+            lowered = Gdk.keyval_to_lower(keyval)
+            if lowered == Gdk.KEY_s and self._current_note is not None:
+                # Ctrl+S зберігає негайно, не чекаючи 900 мс.
+                self.save_state()
+                self._set_save_status(tr("Saved"))
+                return True
+            if lowered == Gdk.KEY_f:
+                self._search_entry.grab_focus()
+                self._search_entry.select_region(0, -1)
+                return True
+
         if has_control and not has_shift and self._current_note is not None:
             shortcuts = {
                 Gdk.KEY_b: "bold",
