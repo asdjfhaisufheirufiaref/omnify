@@ -16,6 +16,16 @@ class NotesUiHelperTests(unittest.TestCase):
         text = "Привіт, це тестова нотатка з чеклістом:\n- [ ] зробити"
         self.assertEqual(NotesModule._count_words(text), 7)
 
+    def test_note_snippet_strips_markdown_and_images(self) -> None:
+        contents = "![photo](assets/x.png)\n\n## Заголовок\n\nТекст **нотатки**"
+        self.assertEqual(NotesModule._note_snippet(contents), "Заголовок")
+
+    def test_note_snippet_marks_checklist(self) -> None:
+        self.assertEqual(
+            NotesModule._note_snippet("- [ ] купити молоко"),
+            "☐ купити молоко",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

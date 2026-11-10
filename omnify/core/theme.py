@@ -580,6 +580,12 @@ button:disabled { opacity: 0.55; }
     font-size: 0.78em;
 }
 
+/* Короткий уривок тексту під назвою нотатки. */
+.notes-row-snippet {
+    color: var(--omnify-fg-dim);
+    font-size: 0.82em;
+}
+
 /* Рядки тегів і папок у списку нотаток. */
 .notes-row-tags {
     color: var(--omnify-accent);

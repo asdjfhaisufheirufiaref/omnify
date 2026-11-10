@@ -81,6 +81,7 @@ class NotesModule(BaseModule):
 
         # Підписи рядків, щоб оновлювати назву без перебудови всього списку.
         self._row_labels: dict[str, Gtk.Label] = {}
+        self._row_snippets: dict[str, Gtk.Label] = {}
         self._row_pins: dict[str, Gtk.Label] = {}
         self._row_tags: dict[str, Gtk.Label] = {}
         self._row_folders: dict[str, Gtk.Label] = {}
@@ -661,6 +662,7 @@ class NotesModule(BaseModule):
         self._rows_by_id.clear()
         self._row_ids.clear()
         self._row_labels.clear()
+        self._row_snippets.clear()
         self._row_pins.clear()
         self._row_tags.clear()
         self._row_folders.clear()
@@ -708,6 +710,7 @@ class NotesModule(BaseModule):
 
         # Теги вводяться одним рядком через кому.
         self._current_note.tags = self._parse_tags(self._tag_entry.get_text())
+        self._update_row_snippet(self._current_note)
         self._update_row_tags(self._current_note)
 
     def _schedule_save(self) -> None:
@@ -780,6 +783,11 @@ class NotesModule(BaseModule):
         title_row.append(title_label)
         row_box.append(title_row)
 
+        snippet_label = Gtk.Label(xalign=0.0)
+        snippet_label.get_style_context().add_class("notes-row-snippet")
+        snippet_label.set_ellipsize(Pango.EllipsizeMode.END)
+        row_box.append(snippet_label)
+
         tags_label = Gtk.Label(xalign=0.0)
         tags_label.get_style_context().add_class("notes-row-tags")
         tags_label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -795,9 +803,11 @@ class NotesModule(BaseModule):
         # Запам'ятовуємо зв'язок між віджетом і нотаткою.
         self._row_ids[row] = note.id
         self._row_labels[note.id] = title_label
+        self._row_snippets[note.id] = snippet_label
         self._row_pins[note.id] = pin_label
         self._row_tags[note.id] = tags_label
         self._row_folders[note.id] = folder_label
+        self._update_row_snippet(note)
         self._update_row_tags(note)
         self._update_row_folder(note)
         return row
@@ -813,6 +823,34 @@ class NotesModule(BaseModule):
                 result.append(tag)
                 seen.add(key)
         return result
+
+    @staticmethod
+    def _note_snippet(contents: str) -> str:
+        """Взяти перший змістовний рядок нотатки для списку."""
+        for line in contents.splitlines():
+            line = line.strip()
+            if not line or line.startswith("```") or line.startswith("!["):
+                continue
+            line = re.sub(r"^#{1,6}\s*", "", line)
+            line = re.sub(r"^[-*+]\s+\[[ xX]\]\s*", "☐ ", line)
+            line = re.sub(r"^[-*+]\s+", "", line)
+            line = re.sub(r"^\d+[.)]\s+", "", line)
+            line = re.sub(r"^>\s*", "", line)
+            line = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", line)
+            line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+            line = re.sub(r"[*_`~]", "", line).strip()
+            if line:
+                return line[:100]
+        return ""
+
+    def _update_row_snippet(self, note: Note) -> None:
+        """Оновити короткий уривок тексту під назвою нотатки."""
+        label = self._row_snippets.get(note.id)
+        if label is None:
+            return
+        snippet = self._note_snippet(note.contents)
+        label.set_text(snippet)
+        label.set_visible(bool(snippet))
 
     def _update_row_tags(self, note: Note) -> None:
         """Оновити маленький рядок тегів у списку нотаток."""
