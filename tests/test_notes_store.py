@@ -189,6 +189,39 @@ class NoteStoreTests(unittest.TestCase):
             for note in notes:
                 self.assertFalse((store.assets_dir / note.id).exists())
 
+    def test_duplicate_note_gets_new_id_and_copies_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = NoteStore(root)
+            note = Note(
+                label="Original",
+                contents="Text",
+                tags=["work"],
+                folder="Work",
+                pinned=True,
+            )
+            store.save(note)
+            source = root / "photo.png"
+            source.write_bytes(b"png")
+            relative = store.import_image(note, source)
+            note.contents = f"![photo]({relative})"
+            store.save(note)
+
+            clone = store.duplicate_note(note)
+
+            self.assertNotEqual(clone.id, note.id)
+            self.assertEqual(clone.label, "Original (copy)")
+            self.assertEqual(clone.tags, ["work"])
+            self.assertEqual(clone.folder, "Work")
+            self.assertTrue(clone.pinned)
+            self.assertEqual(
+                clone.contents,
+                f"![photo](assets/{clone.id}/photo.png)",
+            )
+            self.assertTrue((store.assets_dir / clone.id / "photo.png").is_file())
+            self.assertTrue((store.assets_dir / note.id / "photo.png").is_file())
+            self.assertEqual(len(store.load()), 2)
+
     def test_sync_to_does_not_copy_trash(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

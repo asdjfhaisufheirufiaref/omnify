@@ -471,6 +471,35 @@ class NoteStore:
     # ------------------------------------------------------------------
     # Картинки
     # ------------------------------------------------------------------
+    def duplicate_note(self, note: Note, folder: str | None = None) -> Note:
+        """Створити повну копію нотатки з новим id.
+
+        Копія отримує новий id, тому її можна незалежно редагувати. Якщо
+        в нотатці були картинки, вони копіюються в ``assets/<new-id>/``,
+        а посилання в тексті замінюються на новий шлях.
+        """
+        source_id = self._safe_id(note.id)
+        source_assets = self.assets_dir / source_id if source_id else None
+        clone = Note(
+            label=f"{note.label} (copy)",
+            contents=note.contents,
+            tags=list(note.tags),
+            folder=note.folder if folder is None else folder,
+            pinned=bool(note.pinned),
+        )
+        old_prefix = f"assets/{note.id}/"
+        new_prefix = f"assets/{clone.id}/"
+        clone.contents = clone.contents.replace(old_prefix, new_prefix)
+
+        if source_assets is not None and source_assets.is_dir():
+            shutil.copytree(
+                source_assets,
+                self.assets_dir / clone.id,
+                dirs_exist_ok=True,
+            )
+        self.save(clone)
+        return clone
+
     def import_markdown(self, source: Path | str, folder: str = "") -> Note:
         """Імпортувати зовнішній Markdown-файл як нову нотатку.
 

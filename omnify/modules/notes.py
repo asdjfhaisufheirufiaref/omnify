@@ -478,6 +478,7 @@ class NotesModule(BaseModule):
         box.set_margin_end(8)
 
         actions = [
+            (tr("Duplicate note"), self._on_duplicate_note),
             (tr("Import Markdown files…"), self._on_import_markdown),
             (tr("Export as HTML…"), self._on_export_html),
             (tr("Export as PDF…"), self._on_export_pdf),
@@ -1058,6 +1059,26 @@ class NotesModule(BaseModule):
         self._title_entry.grab_focus()
         self._save_selected_id()
         self._schedule_save()
+
+    def _on_duplicate_note(self) -> None:
+        """Створити незалежну копію відкритої нотатки."""
+        if self._current_note is None or self._store is None:
+            return
+
+        self._sync_current_note()
+        self._save_current_note()
+        try:
+            clone = self._store.duplicate_note(self._current_note)
+        except Exception as exc:
+            self.ctx.notify(tr("Could not duplicate note: {error}", error=exc))
+            return
+
+        # Якщо був активний пошук, копія може бути прихована. Показуємо
+        # весь список, щоб користувач одразу побачив новий рядок.
+        if self._search_query:
+            self._search_entry.set_text("")
+        self._reload_notes_from_store(clone.id)
+        self.ctx.notify(tr("Note duplicated"))
 
     def _on_title_changed(self, entry) -> None:
         """Користувач змінив назву нотатки."""
