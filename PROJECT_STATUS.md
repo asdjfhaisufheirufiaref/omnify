@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **448 tests**.
+module are implemented. The full headless suite is green: **449 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -164,7 +164,8 @@ The Notes module is implemented:
 - **Preview** renders headings, paragraphs, lists, checklists, tables, code,
   links, images and tags without WebKit; checklist boxes are clickable;
 - export to standalone HTML (images embedded as base64), PDF through
-  cairo/Pango, and all notes as an HTML bundle with an index page;
+  cairo/Pango, a portable Markdown folder with copied assets, and all notes
+  as an HTML bundle with an index page;
 - Markdown import copies external `.md`/`.markdown` files into the chosen
   folder, preserves title/tags/pinned metadata and allocates a fresh id on
   collision without touching the source;
@@ -194,7 +195,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **448 OK**
+- `python3 -m unittest discover -s tests` → **449 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance

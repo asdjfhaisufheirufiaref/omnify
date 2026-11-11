@@ -115,6 +115,7 @@ class NotesModule(BaseModule):
         self._import_dialog = None
         self._export_dialog = None
         self._export_all_dialog = None
+        self._markdown_dialog = None
         self._sync_dialog = None
         self._restore_dialog = None
         self._trash_dialog = None
@@ -497,6 +498,7 @@ class NotesModule(BaseModule):
             (tr("Import Markdown files…"), self._on_import_markdown),
             (tr("Export as HTML…"), self._on_export_html),
             (tr("Export as PDF…"), self._on_export_pdf),
+            (tr("Export as Markdown…"), self._on_export_markdown),
             (tr("Export all notes as HTML…"), self._on_export_all_html),
             (tr("Backup notes"), self._on_backup_notes),
             (tr("Restore backup…"), self._on_restore_notes),
@@ -2837,6 +2839,45 @@ class NotesModule(BaseModule):
             self.ctx.notify(tr("Exported: {path}", path=path))
 
         self._choose_export_path("pdf", run)
+
+    def _on_export_markdown(self) -> None:
+        """Експортувати нотатку в окрему теку Markdown разом із картинками."""
+        from gi.repository import Gtk
+
+        if self._current_note is None or self._store is None:
+            return
+        self._sync_current_note()
+        self._save_current_note()
+        note_id = self._current_note.id
+
+        dialog = Gtk.FileChooserNative(
+            title=tr("Choose export folder"),
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            transient_for=self._parent_window(),
+        )
+
+        def on_response(native, response):
+            self._markdown_dialog = None
+            if response != Gtk.ResponseType.ACCEPT:
+                native.destroy()
+                return
+            file = native.get_file()
+            native.destroy()
+            if file is None or not file.get_path():
+                return
+            note = self._notes_by_id.get(note_id)
+            if note is None:
+                return
+            try:
+                export_dir = self._store.export_markdown(note, file.get_path())
+            except Exception as exc:
+                self.ctx.notify(tr("Could not export note: {error}", error=exc))
+                return
+            self.ctx.notify(tr("Exported note to {path}", path=export_dir))
+
+        dialog.connect("response", on_response)
+        self._markdown_dialog = dialog
+        dialog.show()
 
     def _on_export_all_html(self) -> None:
         """Експортувати всі нотатки в теку з index.html."""

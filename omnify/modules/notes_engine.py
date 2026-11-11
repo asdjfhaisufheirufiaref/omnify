@@ -615,6 +615,48 @@ class NoteStore:
         self._remove_empty_folder(self.history_dir)
         return count
 
+    def export_markdown(self, note: Note, target_root: Path | str) -> Path:
+        """Експортувати нотатку в окрему теку разом із її картинками.
+
+        У вибраній папці створюється підпапка з назвою нотатки, всередині
+        лежить Markdown-файл і ``assets/<id>/``. Відносні посилання на
+        зображення залишаються робочими, тому теку можна заархівувати або
+        відкрити в іншому Markdown-редакторі.
+        """
+        source = Path(note.path) if note.path else None
+        if source is None or not source.is_file():
+            raise FileNotFoundError("Note file not found")
+        try:
+            relative = source.relative_to(self.root)
+        except ValueError as exc:
+            raise ValueError("Note is outside notes") from exc
+        if relative.parts and relative.parts[0] in {".trash", ".history"}:
+            raise ValueError("Cannot export a service note")
+
+        target_root = Path(target_root).expanduser().resolve()
+        if target_root == self.root:
+            raise ValueError("Export folder must be different from notes")
+        if target_root.is_relative_to(self.root):
+            raise ValueError("Export folder cannot be inside notes")
+        if self.root.is_relative_to(target_root):
+            raise ValueError("Export folder cannot contain the notes folder")
+        target_root.mkdir(parents=True, exist_ok=True)
+
+        base = self._slugify(note.label)
+        export_dir = target_root / base
+        counter = 1
+        while export_dir.exists():
+            export_dir = target_root / f"{base}-{counter}"
+            counter += 1
+        export_dir.mkdir(parents=True)
+
+        shutil.copy2(source, export_dir / source.name)
+        note_id = self._safe_id(note.id)
+        assets = self.assets_dir / note_id if note_id else None
+        if assets is not None and assets.is_dir():
+            shutil.copytree(assets, export_dir / "assets" / note_id)
+        return export_dir
+
     def import_markdown(self, source: Path | str, folder: str = "") -> Note:
         """Імпортувати зовнішній Markdown-файл як нову нотатку.
 

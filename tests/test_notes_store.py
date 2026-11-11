@@ -275,6 +275,30 @@ class NoteStoreTests(unittest.TestCase):
             store.delete(note)
             self.assertFalse(history_folder.exists())
 
+    def test_export_markdown_copies_note_and_its_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            store = NoteStore(base / "notes")
+            note = Note(label="Portable note", contents="Text", folder="Work")
+            store.save(note)
+            source = base / "photo.png"
+            source.write_bytes(b"png")
+            relative = store.import_image(note, source)
+            note.contents = f"![photo]({relative})"
+            store.save(note)
+
+            export_dir = store.export_markdown(note, base / "export")
+
+            exported_note = export_dir / note.path.name
+            self.assertTrue(exported_note.is_file())
+            self.assertIn(f"assets/{note.id}/photo.png", exported_note.read_text())
+            self.assertTrue(
+                (export_dir / "assets" / note.id / "photo.png").is_file()
+            )
+            second = store.export_markdown(note, base / "export")
+            self.assertNotEqual(second, export_dir)
+            self.assertTrue(second.is_dir())
+
     def test_sync_to_does_not_copy_trash(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

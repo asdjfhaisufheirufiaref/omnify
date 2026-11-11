@@ -1317,6 +1317,8 @@ TRANSLATIONS = {
     "Could not import Markdown: {error}": "Не вдалося імпортувати Markdown: {error}",
     "Export as HTML…": "Експортувати як HTML…",
     "Export as PDF…": "Експортувати як PDF…",
+    "Export as Markdown…": "Експортувати як Markdown…",
+    "Exported note to {path}": "Нотатку експортовано до {path}",
     "Export all notes as HTML…": "Експортувати всі нотатки як HTML…",
     "Choose export folder": "Виберіть теку для експорту",
     "Could not export notes: {error}": "Не вдалося експортувати нотатки: {error}",
