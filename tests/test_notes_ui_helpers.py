@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from omnify.modules.notes import NotesModule
+from omnify.modules.notes_engine import Note
 
 
 class NotesUiHelperTests(unittest.TestCase):
@@ -32,6 +33,12 @@ class NotesUiHelperTests(unittest.TestCase):
         for title, contents in templates:
             self.assertTrue(title.strip())
             self.assertTrue(contents.startswith("# "))
+
+    def test_notes_summary_reports_count_and_latest_title(self) -> None:
+        module = NotesModule.__new__(NotesModule)
+        self.assertEqual(module.summary(), (0, ""))
+        module._notes = [Note(label="Latest"), Note(label="Older")]
+        self.assertEqual(module.summary(), (2, "Latest"))
 
     def test_find_next_offset_is_case_insensitive_and_wraps(self) -> None:
         text = "Alpha beta ALPHA"

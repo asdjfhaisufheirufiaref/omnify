@@ -1373,6 +1373,8 @@ TRANSLATIONS = {
     ),
     "Open today's journal": "Відкрити щоденник на сьогодні",
     "Today's journal": "Щоденник на сьогодні",
+    "No notes yet": "Нотаток ще немає",
+    "{count} notes": "Нотаток: {count}",
     "Journal": "Щоденник",
     "Find and replace…": "Знайти й замінити…",
     "Find and replace": "Знайти й замінити",

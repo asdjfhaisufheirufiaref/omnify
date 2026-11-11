@@ -1201,6 +1201,17 @@ class NotesModule(BaseModule):
         """Публічна точка входу для Dashboard та інших модулів."""
         self._on_open_journal()
 
+    def create_note(self, label: str = "Untitled", contents: str = "") -> None:
+        """Публічне створення нотатки для Dashboard та інших модулів."""
+        self._create_note(label, contents)
+
+    def summary(self) -> tuple[int, str]:
+        """Кількість нотаток і назва найновішої для Dashboard."""
+        notes = getattr(self, "_notes", [])
+        if not notes:
+            return 0, ""
+        return len(notes), notes[0].label
+
     def _on_open_journal(self, _button=None) -> None:
         """Відкрити або створити щоденну нотатку на сьогодні."""
         self._sync_current_note()

@@ -94,6 +94,10 @@ class DashboardModule(BaseModule):
         root.append(hero)
 
         quick = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        new_note_button = Gtk.Button(label=tr("New note"))
+        new_note_button.get_style_context().add_class("dashboard-quick")
+        new_note_button.connect("clicked", lambda _button: self._open_new_note())
+        quick.append(new_note_button)
         journal_button = Gtk.Button(label=tr("Today's journal"))
         journal_button.get_style_context().add_class("dashboard-quick")
         journal_button.connect("clicked", lambda _button: self._open_journal())
@@ -135,6 +139,26 @@ class DashboardModule(BaseModule):
         if callable(opener):
             opener()
 
+    def _open_new_note(self) -> None:
+        """Open Notes and create a blank note in the current folder."""
+        self.ctx.open_module("notes")
+        module = self.ctx.get_module("notes")
+        creator = getattr(module, "create_note", None)
+        if callable(creator):
+            creator("Untitled")
+
+    def _notes_text(self) -> str:
+        """Short Notes summary for the dashboard glance card."""
+        module = self._module("notes")
+        summary = getattr(module, "summary", None)
+        if not callable(summary):
+            return tr("No notes yet")
+        count, title = summary()
+        if count == 0:
+            return tr("No notes yet")
+        text = tr("{count} notes", count=count)
+        return f"{text} · {title}" if title else text
+
     def _build_glance(self, Gtk) -> Any:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         card.get_style_context().add_class("omnify-card")
@@ -148,6 +172,7 @@ class DashboardModule(BaseModule):
             ("timers", "Timers"),
             ("stopwatch", "Stopwatch"),
             ("browser", "Browser"),
+            ("notes", "Notes"),
         ):
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
             name = Gtk.Label(label=label, xalign=0.0)
@@ -319,6 +344,7 @@ class DashboardModule(BaseModule):
         self._glance_values["timers"].set_text(self._timer_text())
         self._glance_values["stopwatch"].set_text(self._stopwatch_text())
         self._glance_values["browser"].set_text(self._browser_text())
+        self._glance_values["notes"].set_text(self._notes_text())
 
     # ------------------------------------------------------------------
     # BaseModule hooks
