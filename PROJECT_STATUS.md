@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **444 tests**.
+module are implemented. The full headless suite is green: **446 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -151,6 +151,9 @@ The Notes module is implemented:
   every five minutes, plus on demand from **Save version**. The history
   dialog previews a version, restores it with a safety snapshot, deletes one
   version or clears the whole history; history is removed with the note;
+- **Find and replace** (`Ctrl+H`) works on the current note, supports match
+  case, next/previous wrap-around, single replacement and replace-all;
+  replacement text is treated literally (no regex/backslash surprises);
 - tags are edited as a comma-separated line and are searchable with `#tag`;
   the tag menu filters by tag and the tag field offers known-tag completion;
 - a formatting toolbar inserts bold, italic, strike-through, headings,
@@ -191,7 +194,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **444 OK**
+- `python3 -m unittest discover -s tests` → **446 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance

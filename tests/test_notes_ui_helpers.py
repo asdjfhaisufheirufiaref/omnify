@@ -33,6 +33,27 @@ class NotesUiHelperTests(unittest.TestCase):
             self.assertTrue(title.strip())
             self.assertTrue(contents.startswith("# "))
 
+    def test_find_next_offset_is_case_insensitive_and_wraps(self) -> None:
+        text = "Alpha beta ALPHA"
+        self.assertEqual(NotesModule._find_next_offset(text, "alpha", 0), 0)
+        self.assertEqual(NotesModule._find_next_offset(text, "alpha", 1), 11)
+        self.assertEqual(NotesModule._find_next_offset(text, "alpha", 12), 0)
+        self.assertEqual(NotesModule._find_next_offset(text, "Alpha", 0, True), 0)
+
+    def test_replace_all_handles_case_and_backslashes_literally(self) -> None:
+        self.assertEqual(
+            NotesModule._replace_all("One one ONE", "one", "two"),
+            ("two two two", 3),
+        )
+        self.assertEqual(
+            NotesModule._replace_all("One one", "one", r"\1", True),
+            (r"One \1", 1),
+        )
+        self.assertEqual(
+            NotesModule._replace_all("Text", "", "x"),
+            ("Text", 0),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

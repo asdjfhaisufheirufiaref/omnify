@@ -119,6 +119,7 @@ class NotesModule(BaseModule):
         self._restore_dialog = None
         self._trash_dialog = None
         self._history_dialog = None
+        self._find_dialog = None
 
         # Для кожного якоря картинки зберігаємо Markdown-текст, який
         # потрібно записати у файл. Ключ — Gtk.TextChildAnchor.
@@ -489,6 +490,7 @@ class NotesModule(BaseModule):
         actions = [
             (tr("New from template…"), self._on_new_from_template),
             (tr("Open today's journal"), self._on_open_journal),
+            (tr("Find and replace…"), self._on_find_replace),
             (tr("Duplicate note"), self._on_duplicate_note),
             (tr("Save version"), self._on_save_version),
             (tr("Version history…"), self._on_open_history),
@@ -1219,6 +1221,210 @@ class NotesModule(BaseModule):
         self._refresh_folder_button()
         self._refresh_folder_popover()
         self._create_note(label, contents, folder=folder, focus_title=False)
+
+    @staticmethod
+    def _find_next_offset(
+        text: str,
+        needle: str,
+        start: int,
+        case_sensitive: bool = False,
+    ) -> int:
+        """Знайти наступний збіг із підтримкою переходу через кінець."""
+        if not needle:
+            return -1
+        flags = 0 if case_sensitive else re.IGNORECASE
+        pattern = re.compile(re.escape(needle), flags)
+        match = pattern.search(text, max(0, start))
+        if match is None and start > 0:
+            match = pattern.search(text, 0)
+        return match.start() if match is not None else -1
+
+    @staticmethod
+    def _replace_all(
+        text: str,
+        needle: str,
+        replacement: str,
+        case_sensitive: bool = False,
+    ) -> tuple[str, int]:
+        """Замінити всі входження без інтерпретації replacement як regex."""
+        if not needle:
+            return text, 0
+        if case_sensitive:
+            count = text.count(needle)
+            return text.replace(needle, replacement), count
+        pattern = re.compile(re.escape(needle), re.IGNORECASE)
+        return pattern.subn(lambda _match: replacement, text)
+
+    def _on_find_replace(self) -> None:
+        """Відкрити діалог пошуку та заміни в тексту поточної нотатки."""
+        from gi.repository import Gtk
+
+        if self._current_note is None:
+            return
+        existing = getattr(self, "_find_dialog", None)
+        if existing is not None:
+            existing.present()
+            return
+        if self._preview_toggle.get_active():
+            self._preview_toggle.set_active(False)
+
+        window = Gtk.Window(title=tr("Find and replace"))
+        window.set_transient_for(self._parent_window())
+        window.set_modal(True)
+        window.set_destroy_with_parent(True)
+        window.set_default_size(480, 260)
+        window.connect(
+            "destroy",
+            lambda _window: setattr(self, "_find_dialog", None),
+        )
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_margin_top(12)
+        outer.set_margin_bottom(12)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
+
+        title = Gtk.Label(label=tr("Find and replace"), xalign=0.0)
+        title.get_style_context().add_class("omnify-card-title")
+        outer.append(title)
+
+        find_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        find_label = Gtk.Label(label=tr("Find"), xalign=0.0)
+        find_label.set_size_request(80, -1)
+        find_row.append(find_label)
+        find_entry = Gtk.Entry()
+        find_entry.set_hexpand(True)
+        find_row.append(find_entry)
+        outer.append(find_row)
+
+        replace_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        replace_label = Gtk.Label(label=tr("Replace"), xalign=0.0)
+        replace_label.set_size_request(80, -1)
+        replace_row.append(replace_label)
+        replace_entry = Gtk.Entry()
+        replace_entry.set_hexpand(True)
+        replace_row.append(replace_entry)
+        outer.append(replace_row)
+
+        case_check = Gtk.CheckButton(label=tr("Match case"))
+        outer.append(case_check)
+
+        status = Gtk.Label(label="", xalign=0.0)
+        status.get_style_context().add_class("omnify-dim")
+        outer.append(status)
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        find_button = Gtk.Button(label=tr("Find next"))
+        replace_button = Gtk.Button(label=tr("Replace"))
+        replace_all_button = Gtk.Button(label=tr("Replace all"))
+        close_button = Gtk.Button(label=tr("Close"))
+        for button in (
+            find_button,
+            replace_button,
+            replace_all_button,
+            close_button,
+        ):
+            button.get_style_context().add_class("notes-folder-button")
+        buttons.append(find_button)
+        buttons.append(replace_button)
+        buttons.append(replace_all_button)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        buttons.append(spacer)
+        buttons.append(close_button)
+        outer.append(buttons)
+        window.set_child(outer)
+
+        buffer = self._body_view.get_buffer()
+        if buffer.get_has_selection():
+            start, end = buffer.get_selection_bounds()
+            find_entry.set_text(buffer.get_text(start, end, True))
+
+        def find_next() -> bool:
+            needle = find_entry.get_text()
+            if not needle:
+                return False
+            text = buffer.get_text(
+                buffer.get_start_iter(),
+                buffer.get_end_iter(),
+                True,
+            )
+            if buffer.get_has_selection():
+                start = buffer.get_selection_bounds()[1].get_offset()
+            else:
+                start = buffer.get_iter_at_mark(buffer.get_insert()).get_offset()
+            index = self._find_next_offset(
+                text,
+                needle,
+                start,
+                case_check.get_active(),
+            )
+            if index < 0:
+                status.set_text(tr("Text not found"))
+                return False
+            match_start = buffer.get_iter_at_offset(index)
+            match_end = buffer.get_iter_at_offset(index + len(needle))
+            buffer.select_range(match_start, match_end)
+            self._body_view.scroll_to_iter(match_start, 0.0, False, 0.0, 0.0)
+            status.set_text(tr("Match found"))
+            return True
+
+        def replace_current() -> None:
+            needle = find_entry.get_text()
+            if not needle:
+                return
+            if not buffer.get_has_selection():
+                find_next()
+                return
+            start, end = buffer.get_selection_bounds()
+            selected = buffer.get_text(start, end, True)
+            same = (
+                selected == needle
+                if case_check.get_active()
+                else selected.casefold() == needle.casefold()
+            )
+            if not same:
+                find_next()
+                return
+            buffer.begin_user_action()
+            buffer.delete(start, end)
+            buffer.insert(start, replace_entry.get_text())
+            buffer.end_user_action()
+            status.set_text(tr("Replaced: {count}", count=1))
+            find_next()
+
+        def replace_everywhere() -> None:
+            needle = find_entry.get_text()
+            if not needle:
+                return
+            text = buffer.get_text(
+                buffer.get_start_iter(),
+                buffer.get_end_iter(),
+                True,
+            )
+            updated, count = self._replace_all(
+                text,
+                needle,
+                replace_entry.get_text(),
+                case_check.get_active(),
+            )
+            if count == 0:
+                status.set_text(tr("Nothing to replace"))
+                return
+            buffer.begin_user_action()
+            buffer.set_text(updated)
+            buffer.end_user_action()
+            status.set_text(tr("Replaced: {count}", count=count))
+
+        find_entry.connect("activate", lambda _entry: find_next())
+        find_button.connect("clicked", lambda _button: find_next())
+        replace_button.connect("clicked", lambda _button: replace_current())
+        replace_all_button.connect("clicked", lambda _button: replace_everywhere())
+        close_button.connect("clicked", lambda _button: window.close())
+
+        self._find_dialog = window
+        window.present()
+        find_entry.grab_focus()
 
     def _on_duplicate_note(self) -> None:
         """Створити незалежну копію відкритої нотатки."""
@@ -2358,6 +2564,9 @@ class NotesModule(BaseModule):
             if lowered == Gdk.KEY_f:
                 self._search_entry.grab_focus()
                 self._search_entry.select_region(0, -1)
+                return True
+            if lowered == Gdk.KEY_h and self._current_note is not None:
+                self._on_find_replace()
                 return True
 
         if has_control and not has_shift and self._current_note is not None:
