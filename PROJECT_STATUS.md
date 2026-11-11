@@ -1,18 +1,21 @@
 # Omnify — v1 status and Notes handoff
 
-Updated: 2026-11-08. This file is the handoff source of truth for the
-next session.
+Updated: 2026-11-11. This file is the handoff source of truth for the
+next session. The student report for practical works is in
+`ПРАКТИЧНІ_РОБОТИ.md`; the public-facing project guide is `README.md`.
 
 ## v1 state
 
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **422 tests**.
+module are implemented. The full headless suite is green: **435 tests**.
 
-Not built yet: cloud/native phone sync (notes are local files, and the
-in-app sync is a one-way copy to a folder chosen by the user) and
-optional later tools such as a file manager or mail.
+Notes can be copied one-way to a folder or merged two-way with another
+notes folder by stable id; deletions are not propagated by the two-way
+merge. Not built yet: cloud/native phone sync with a hosted account,
+real-time collaboration, and optional later tools such as a file manager
+or mail.
 
 ## Run and install
 
@@ -129,19 +132,27 @@ The Notes module is implemented:
 - notes have YAML-style front matter with a stable id, title, tags and
   timestamp;
 - notes can live in one-level folders under `notes/`; the sidebar filters by
-  folder and can create folders or delete one (its notes move to **Unfiled**
-  rather than being deleted);
-- list/search, create, select, edit and delete notes; deleting a note also
-  removes its images after confirmation;
+  folder, can create folders, rename them, and delete one (its notes move to
+  **Unfiled** rather than being deleted); destructive folder operations
+  clean up empty nested directories;
+- list/search, create, select, edit and delete notes; pinned notes sort first;
+  the list shows a short excerpt from the first meaningful Markdown line;
 - tags are edited as a comma-separated line and are searchable with `#tag`;
+  the tag menu filters by tag and the tag field offers known-tag completion;
+- a formatting toolbar inserts bold, italic, strike-through, headings,
+  lists, quotes, code and links; keyboard shortcuts cover save, search,
+  bold, italic and link insertion;
 - checklists and tables can be inserted with toolbar buttons; Markdown
   checklists and pipe tables are rendered in preview and in exports;
 - **Preview** renders headings, paragraphs, lists, checklists, tables, code,
-  links, images and tags without WebKit;
-- export to standalone HTML (images embedded as base64) and PDF through
-  cairo/Pango;
+  links, images and tags without WebKit; checklist boxes are clickable;
+- export to standalone HTML (images embedded as base64), PDF through
+  cairo/Pango, and all notes as an HTML bundle with an index page;
+- Markdown import copies external `.md`/`.markdown` files into the chosen
+  folder, preserves title/tags/pinned metadata and allocates a fresh id on
+  collision without touching the source;
 - autosave with a debounce timer; the previous note is flushed when switching;
-- last selected note and folder filter restored on restart;
+  last selected note and folder filter restored on restart;
 - images are copied to `notes/assets/<note-id>/` and inserted as relative
   Markdown links (`![alt](assets/...)`);
 - local images are rendered inline in the editor; the Markdown link is
@@ -150,20 +161,23 @@ The Notes module is implemented:
 - ZIP backups can be created manually or automatically once per day; backups
   are kept under `~/.local/share/omnify/backups/` (last 10 retained);
 - **Sync notes to folder…** copies the notes tree one-way to a folder chosen
-  by the user (for example a Syncthing/Dropbox folder); it does not merge
-  changes back from that folder;
+  by the user (for example a Syncthing/Dropbox folder);
+- **Two-way sync with folder…** merges notes by stable id and lets the newer
+  `updated_at` win; it creates a safety backup first and does not propagate
+  deletions;
 - **Restore backup…** merges a ZIP backup into the current notes and creates
   a safety backup first;
 - legacy notes from `notes.json` are migrated automatically on first launch;
 - `notes/` is ignored by Git;
 - model, file store and renderer covered by `tests/test_notes_engine.py`,
-  `tests/test_notes_store.py` and `tests/test_notes_render.py`;
+  `tests/test_notes_store.py`, `tests/test_notes_ui_helpers.py` and
+  `tests/test_notes_render.py`;
 - registered in `omnify/modules/__init__.py`.
 
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **422 OK**
+- `python3 -m unittest discover -s tests` → **435 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance

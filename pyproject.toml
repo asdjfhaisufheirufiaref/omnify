@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "omnify"
 version = "0.1.0"
 description = "All-in-one desktop toolbox: calculator, calendar, timer, stopwatch, task manager and more"
-readme = "PROJECT_STATUS.md"
+readme = "README.md"
 requires-python = ">=3.10"
 # Runtime needs PyGObject + GTK 4 (system packages on most distros,
 # e.g. `python-gobject` + `gtk4` on Arch/CachyOS); they are not pulled
