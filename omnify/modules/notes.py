@@ -157,6 +157,12 @@ class NotesModule(BaseModule):
         notes_label.get_style_context().add_class("omnify-card-title")
         sidebar_header.append(notes_label)
 
+        journal_button = Gtk.Button(label="📖")
+        journal_button.set_tooltip_text(tr("Open today's journal"))
+        journal_button.get_style_context().add_class("notes-icon-button")
+        journal_button.connect("clicked", self._on_open_journal)
+        sidebar_header.append(journal_button)
+
         new_button = Gtk.Button(label="+")
         new_button.set_tooltip_text("New note")
         new_button.get_style_context().add_class("notes-icon-button")
@@ -481,6 +487,8 @@ class NotesModule(BaseModule):
         box.set_margin_end(8)
 
         actions = [
+            (tr("New from template…"), self._on_new_from_template),
+            (tr("Open today's journal"), self._on_open_journal),
             (tr("Duplicate note"), self._on_duplicate_note),
             (tr("Save version"), self._on_save_version),
             (tr("Version history…"), self._on_open_history),
@@ -1030,17 +1038,27 @@ class NotesModule(BaseModule):
 
     def _on_new_note_clicked(self, _button) -> None:
         """Створити нову порожню нотатку."""
+        self._create_note("Untitled")
+
+    def _create_note(
+        self,
+        label: str,
+        contents: str = "",
+        folder: str | None = None,
+        focus_title: bool = True,
+    ) -> Note:
+        """Створити нотатку в поточній або заданій папці й показати її."""
         previous = self._current_note
         self._sync_current_note()
         self._save_note(previous)
 
-        # Якщо користувач дивиться конкретну папку — нова нотатка
-        # створюється саме там. "Усі нотатки" означає корінь notes/.
-        folder = self._folder_filter
+        # "Усі нотатки" та "Без папки" означають корінь notes/.
+        if folder is None:
+            folder = self._folder_filter
         if folder in {_ALL_NOTES, _UNFILED}:
             folder = _UNFILED
 
-        note = Note(label="Untitled", folder=folder)
+        note = Note(label=label, contents=contents, folder=folder)
         self._notes.insert(0, note)
         self._notes_by_id[note.id] = note
         self._save_note(note)
@@ -1061,9 +1079,146 @@ class NotesModule(BaseModule):
         if self._current_note is not note:
             self._show_note(note)
 
-        self._title_entry.grab_focus()
+        if focus_title:
+            self._title_entry.grab_focus()
+        else:
+            self._body_view.grab_focus()
         self._save_selected_id()
         self._schedule_save()
+        return note
+
+    @staticmethod
+    def _template_definitions() -> tuple[tuple[str, str], ...]:
+        """Вбудовані шаблони для швидкого початку нотатки."""
+        return (
+            (
+                tr("Daily plan"),
+                (
+                    f"# {tr('Daily plan')}\n\n"
+                    f"## {tr('Priorities')}\n"
+                    "- [ ] \n"
+                    "- [ ] \n\n"
+                    f"## {tr('Schedule')}\n"
+                    "- 09:00 — \n"
+                    "- 12:00 — \n"
+                ),
+            ),
+            (
+                tr("Meeting notes"),
+                (
+                    f"# {tr('Meeting notes')}\n\n"
+                    f"**{tr('Date')}:** \n"
+                    f"**{tr('Attendees')}:** \n\n"
+                    f"## {tr('Agenda')}\n"
+                    "- \n\n"
+                    f"## {tr('Decisions')}\n"
+                    "- \n\n"
+                    f"## {tr('Action items')}\n"
+                    "- [ ] \n"
+                ),
+            ),
+            (
+                tr("Study notes"),
+                (
+                    f"# {tr('Study notes')}\n\n"
+                    f"## {tr('Key ideas')}\n"
+                    "- \n\n"
+                    f"## {tr('Questions')}\n"
+                    "- \n\n"
+                    f"## {tr('Summary')}\n"
+                ),
+            ),
+            (
+                tr("Weekly review"),
+                (
+                    f"# {tr('Weekly review')}\n\n"
+                    f"## {tr('Wins')}\n"
+                    "- \n\n"
+                    f"## {tr('Challenges')}\n"
+                    "- \n\n"
+                    f"## {tr('Next steps')}\n"
+                    "- [ ] \n"
+                ),
+            ),
+        )
+
+    def _on_new_from_template(self) -> None:
+        """Показати вибір вбудованого шаблону."""
+        from gi.repository import Gtk
+
+        window = Gtk.Window(title=tr("New from template"))
+        window.set_transient_for(self._parent_window())
+        window.set_modal(True)
+        window.set_destroy_with_parent(True)
+        window.set_default_size(420, 420)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_margin_top(12)
+        outer.set_margin_bottom(12)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
+
+        title = Gtk.Label(label=tr("New from template"), xalign=0.0)
+        title.get_style_context().add_class("omnify-card-title")
+        outer.append(title)
+        intro = Gtk.Label(
+            label=tr("The note will be created in the current folder."),
+            xalign=0.0,
+        )
+        intro.set_wrap(True)
+        intro.get_style_context().add_class("omnify-dim")
+        outer.append(intro)
+
+        for name, contents in self._template_definitions():
+            button = Gtk.Button(label=name)
+            button.set_halign(Gtk.Align.FILL)
+            button.get_style_context().add_class("notes-folder-button")
+            button.connect(
+                "clicked",
+                lambda _button, title=name, text=contents: (
+                    window.close(),
+                    self._create_note(title, text, focus_title=False),
+                ),
+            )
+            outer.append(button)
+
+        close_button = Gtk.Button(label=tr("Close"))
+        close_button.set_halign(Gtk.Align.END)
+        close_button.get_style_context().add_class("notes-folder-button")
+        close_button.connect("clicked", lambda _button: window.close())
+        outer.append(close_button)
+
+        window.set_child(outer)
+        window.present()
+
+    def _on_open_journal(self, _button=None) -> None:
+        """Відкрити або створити щоденну нотатку на сьогодні."""
+        self._sync_current_note()
+        self._save_current_note()
+        if self._search_query:
+            self._search_entry.set_text("")
+        today = datetime.now().strftime("%Y-%m-%d")
+        label = f"{tr('Journal')} · {today}"
+        folder = "Journal"
+        for note in self._notes:
+            if note.folder == folder and note.label == label:
+                self._folder_filter = _ALL_NOTES
+                self._refresh_folder_button()
+                self._refresh_folder_popover()
+                self._reload_notes_from_store(note.id)
+                return
+
+        contents = (
+            f"# {label}\n\n"
+            f"## {tr('Plan')}\n"
+            "- [ ] \n\n"
+            f"## {tr('Notes')}\n\n"
+            f"## {tr('Summary')}\n"
+        )
+        self._folder_filter = _ALL_NOTES
+        self._refresh_folder_button()
+        self._refresh_folder_popover()
+        self._create_note(label, contents, folder=folder, focus_title=False)
 
     def _on_duplicate_note(self) -> None:
         """Створити незалежну копію відкритої нотатки."""

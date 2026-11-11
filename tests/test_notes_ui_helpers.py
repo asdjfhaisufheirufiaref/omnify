@@ -26,6 +26,13 @@ class NotesUiHelperTests(unittest.TestCase):
             "☐ купити молоко",
         )
 
+    def test_builtin_templates_have_titles_and_markdown_bodies(self) -> None:
+        templates = NotesModule._template_definitions()
+        self.assertGreaterEqual(len(templates), 4)
+        for title, contents in templates:
+            self.assertTrue(title.strip())
+            self.assertTrue(contents.startswith("# "))
+
 
 if __name__ == "__main__":
     unittest.main()
