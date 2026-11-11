@@ -299,6 +299,30 @@ class NoteStoreTests(unittest.TestCase):
             self.assertNotEqual(second, export_dir)
             self.assertTrue(second.is_dir())
 
+    def test_export_bundle_markdown_keeps_active_notes_and_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            store = NoteStore(base / "notes")
+            note = Note(label="Bundle note", contents="Text", folder="Work")
+            store.save(note)
+            source = base / "photo.png"
+            source.write_bytes(b"png")
+            store.import_image(note, source)
+            spare = Note(label="Root note", contents="Second")
+            store.save(spare)
+
+            bundle, count = store.export_bundle_markdown(base / "export")
+
+            self.assertEqual(count, 2)
+            self.assertTrue((bundle / "index.md").is_file())
+            self.assertTrue((bundle / "Work" / note.path.name).is_file())
+            self.assertTrue((bundle / f"Root-note--{spare.id}.md").is_file())
+            self.assertTrue((bundle / "assets" / note.id / "photo.png").is_file())
+            self.assertFalse((bundle / ".history").exists())
+            self.assertFalse((bundle / ".trash").exists())
+            second, _ = store.export_bundle_markdown(base / "export")
+            self.assertNotEqual(bundle, second)
+
     def test_sync_to_does_not_copy_trash(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

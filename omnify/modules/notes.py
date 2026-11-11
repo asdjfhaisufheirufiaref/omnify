@@ -116,6 +116,7 @@ class NotesModule(BaseModule):
         self._export_dialog = None
         self._export_all_dialog = None
         self._markdown_dialog = None
+        self._export_all_markdown_dialog = None
         self._sync_dialog = None
         self._restore_dialog = None
         self._trash_dialog = None
@@ -500,6 +501,7 @@ class NotesModule(BaseModule):
             (tr("Export as PDF…"), self._on_export_pdf),
             (tr("Export as Markdown…"), self._on_export_markdown),
             (tr("Export all notes as HTML…"), self._on_export_all_html),
+            (tr("Export all notes as Markdown…"), self._on_export_all_markdown),
             (tr("Backup notes"), self._on_backup_notes),
             (tr("Restore backup…"), self._on_restore_notes),
             (tr("Sync notes to folder…"), self._on_sync_notes),
@@ -2877,6 +2879,43 @@ class NotesModule(BaseModule):
 
         dialog.connect("response", on_response)
         self._markdown_dialog = dialog
+        dialog.show()
+
+    def _on_export_all_markdown(self) -> None:
+        """Експортувати всі нотатки як теку Markdown з index.md."""
+        from gi.repository import Gtk
+
+        if self._store is None:
+            return
+        self._sync_current_note()
+        self._save_current_note()
+
+        dialog = Gtk.FileChooserNative(
+            title=tr("Choose export folder"),
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            transient_for=self._parent_window(),
+        )
+
+        def on_response(native, response):
+            self._export_all_markdown_dialog = None
+            if response != Gtk.ResponseType.ACCEPT:
+                native.destroy()
+                return
+            file = native.get_file()
+            native.destroy()
+            if file is None or not file.get_path():
+                return
+            try:
+                bundle, count = self._store.export_bundle_markdown(file.get_path())
+            except Exception as exc:
+                self.ctx.notify(tr("Could not export notes: {error}", error=exc))
+                return
+            self.ctx.notify(
+                tr("Exported notes: {count} to {path}", count=count, path=bundle)
+            )
+
+        dialog.connect("response", on_response)
+        self._export_all_markdown_dialog = dialog
         dialog.show()
 
     def _on_export_all_html(self) -> None:

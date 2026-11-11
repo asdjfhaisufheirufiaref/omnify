@@ -657,6 +657,56 @@ class NoteStore:
             shutil.copytree(assets, export_dir / "assets" / note_id)
         return export_dir
 
+    def export_bundle_markdown(self, target_root: Path | str) -> tuple[Path, int]:
+        """Експортувати всі активні нотатки як портативну Markdown-теку.
+
+        Структура папок і ``assets/<id>/`` зберігаються, а ``index.md``
+        містить посилання на всі нотатки. Приховані службові теки (кошик
+        та історія) не експортуються.
+        """
+        target_root = Path(target_root).expanduser().resolve()
+        if target_root == self.root:
+            raise ValueError("Export folder must be different from notes")
+        if target_root.is_relative_to(self.root):
+            raise ValueError("Export folder cannot be inside notes")
+        if self.root.is_relative_to(target_root):
+            raise ValueError("Export folder cannot contain the notes folder")
+        target_root.mkdir(parents=True, exist_ok=True)
+
+        bundle = target_root / "omnify-notes"
+        counter = 1
+        while bundle.exists():
+            bundle = target_root / f"omnify-notes-{counter}"
+            counter += 1
+        bundle.mkdir(parents=True)
+
+        notes = self.load()
+        lines = ["# Omnify notes", ""]
+        for note in notes:
+            if note.path is None:
+                continue
+            try:
+                relative = note.path.relative_to(self.root)
+            except ValueError:
+                continue
+            destination = bundle / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(note.path, destination)
+            note_id = self._safe_id(note.id)
+            assets = self.assets_dir / note_id if note_id else None
+            if assets is not None and assets.is_dir():
+                shutil.copytree(
+                    assets,
+                    bundle / "assets" / note_id,
+                    dirs_exist_ok=True,
+                )
+            lines.append(f"- [{note.label}](<{relative.as_posix()}>)")
+        (bundle / "index.md").write_text(
+            "\n".join(lines) + "\n",
+            encoding="utf-8",
+        )
+        return bundle, len(notes)
+
     def import_markdown(self, source: Path | str, folder: str = "") -> Note:
         """Імпортувати зовнішній Markdown-файл як нову нотатку.
 

@@ -1318,6 +1318,7 @@ TRANSLATIONS = {
     "Export as HTML…": "Експортувати як HTML…",
     "Export as PDF…": "Експортувати як PDF…",
     "Export as Markdown…": "Експортувати як Markdown…",
+    "Export all notes as Markdown…": "Експортувати всі нотатки як Markdown…",
     "Exported note to {path}": "Нотатку експортовано до {path}",
     "Export all notes as HTML…": "Експортувати всі нотатки як HTML…",
     "Choose export folder": "Виберіть теку для експорту",
