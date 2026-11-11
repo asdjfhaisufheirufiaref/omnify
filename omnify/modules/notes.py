@@ -115,6 +115,7 @@ class NotesModule(BaseModule):
         self._export_all_dialog = None
         self._sync_dialog = None
         self._restore_dialog = None
+        self._trash_dialog = None
 
         # Для кожного якоря картинки зберігаємо Markdown-текст, який
         # потрібно записати у файл. Ключ — Gtk.TextChildAnchor.
@@ -498,7 +499,16 @@ class NotesModule(BaseModule):
 
         box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
-        delete_button = Gtk.Button(label=tr("Delete note"))
+        trash_button = Gtk.Button(label=tr("Trash…"))
+        trash_button.set_halign(Gtk.Align.FILL)
+        trash_button.get_style_context().add_class("notes-menu-item")
+        trash_button.connect(
+            "clicked",
+            lambda _button: (popover.popdown(), self._on_open_trash()),
+        )
+        box.append(trash_button)
+
+        delete_button = Gtk.Button(label=tr("Move to Trash"))
         delete_button.set_halign(Gtk.Align.FILL)
         delete_button.get_style_context().add_class("notes-menu-item")
         delete_button.connect(
@@ -2343,21 +2353,23 @@ class NotesModule(BaseModule):
             pass
 
     def _on_delete_note_clicked(self) -> None:
-        """Видалити відкриту нотатку після підтвердження."""
+        """Перемістити відкриту нотатку в Trash після підтвердження."""
         if self._current_note is None or self._store is None:
             return
         note = self._current_note
+        self._sync_current_note()
+        self._save_current_note()
         if not self._confirm(
-            tr("Delete note?"),
-            tr("This will delete the note and its images. This cannot be undone."),
-            tr("Delete note"),
+            tr("Move note to Trash?"),
+            tr("The note and its images will be moved to Trash. You can restore it later."),
+            tr("Move to Trash"),
         ):
             return
 
         try:
-            self._store.delete(note)
+            self._store.trash_note(note)
         except Exception as exc:
-            self.ctx.notify(tr("Could not delete note: {error}", error=exc))
+            self.ctx.notify(tr("Could not move note to Trash: {error}", error=exc))
             return
 
         # Прибираємо нотатку з усіх словників і з лівого списку.
@@ -2365,6 +2377,8 @@ class NotesModule(BaseModule):
         self._notes_by_id.pop(note.id, None)
         row = self._rows_by_id.pop(note.id, None)
         self._row_labels.pop(note.id, None)
+        self._row_snippets.pop(note.id, None)
+        self._row_pins.pop(note.id, None)
         self._row_tags.pop(note.id, None)
         self._row_folders.pop(note.id, None)
         if row is not None:
@@ -2386,7 +2400,166 @@ class NotesModule(BaseModule):
             self._create_welcome_note()
 
         self._save_selected_id()
-        self.ctx.notify(tr("Note deleted"))
+        self.ctx.notify(tr("Note moved to Trash"))
+
+    def _on_open_trash(self) -> None:
+        """Показати вікно Trash з відновленням і остаточним видаленням."""
+        from gi.repository import Gtk, Pango
+
+        if self._store is None:
+            return
+        existing = getattr(self, "_trash_dialog", None)
+        if existing is not None:
+            existing.present()
+            return
+
+        self._sync_current_note()
+        self._save_current_note()
+
+        window = Gtk.Window(title=tr("Trash"))
+        window.set_transient_for(self._parent_window())
+        window.set_modal(True)
+        window.set_destroy_with_parent(True)
+        window.set_default_size(560, 420)
+        window.connect(
+            "destroy",
+            lambda _window: setattr(self, "_trash_dialog", None),
+        )
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_margin_top(12)
+        outer.set_margin_bottom(12)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        title = Gtk.Label(label=tr("Trash"), xalign=0.0)
+        title.set_hexpand(True)
+        title.get_style_context().add_class("omnify-card-title")
+        header.append(title)
+
+        empty_button = Gtk.Button(label=tr("Empty Trash"))
+        empty_button.get_style_context().add_class("notes-folder-button")
+        header.append(empty_button)
+        outer.append(header)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        listbox = Gtk.ListBox()
+        listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        scroll.set_child(listbox)
+        outer.append(scroll)
+        window.set_child(outer)
+
+        def clear_list() -> None:
+            while True:
+                child = listbox.get_first_child()
+                if child is None:
+                    break
+                listbox.remove(child)
+
+        def refresh() -> None:
+            clear_list()
+            notes = self._store.trashed_notes()
+            empty_button.set_sensitive(bool(notes))
+            if not notes:
+                row = Gtk.ListBoxRow()
+                label = Gtk.Label(label=tr("Trash is empty."), xalign=0.0)
+                label.get_style_context().add_class("omnify-dim")
+                label.set_margin_top(12)
+                label.set_margin_bottom(12)
+                label.set_margin_start(8)
+                row.set_child(label)
+                listbox.append(row)
+                return
+
+            for note in notes:
+                row = Gtk.ListBoxRow()
+                row.set_selectable(False)
+                row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                row_box.set_margin_top(8)
+                row_box.set_margin_bottom(8)
+                row_box.set_margin_start(8)
+                row_box.set_margin_end(8)
+
+                text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                text_box.set_hexpand(True)
+                title_label = Gtk.Label(label=note.label or "Untitled", xalign=0.0)
+                title_label.set_ellipsize(Pango.EllipsizeMode.END)
+                text_box.append(title_label)
+                folder = note.folder or tr("Unfiled")
+                details = Gtk.Label(
+                    label=f"{folder} · {note.updated_at[:10]}",
+                    xalign=0.0,
+                )
+                details.get_style_context().add_class("omnify-dim")
+                text_box.append(details)
+                row_box.append(text_box)
+
+                restore_button = Gtk.Button(label=tr("Restore"))
+                restore_button.get_style_context().add_class("notes-icon-button")
+
+                def restore(_button, item=note) -> None:
+                    try:
+                        restored = self._store.restore_trashed(item)
+                    except Exception as exc:
+                        self.ctx.notify(
+                            tr("Could not restore note: {error}", error=exc)
+                        )
+                        return
+                    refresh()
+                    self._reload_notes_from_store(restored.id)
+                    self.ctx.notify(tr("Note restored"))
+                    window.close()
+
+                restore_button.connect("clicked", restore)
+                row_box.append(restore_button)
+
+                delete_button = Gtk.Button(label=tr("Delete permanently"))
+                delete_button.get_style_context().add_class("notes-icon-button")
+
+                def purge(_button, item=note) -> None:
+                    if not self._confirm(
+                        tr("Delete permanently?"),
+                        tr("The note and its images will be deleted permanently. This cannot be undone."),
+                        tr("Delete permanently"),
+                    ):
+                        return
+                    try:
+                        self._store.purge_trashed(item)
+                    except Exception as exc:
+                        self.ctx.notify(
+                            tr("Could not delete note permanently: {error}", error=exc)
+                        )
+                        return
+                    refresh()
+                    self.ctx.notify(tr("Note permanently deleted"))
+
+                delete_button.connect("clicked", purge)
+                row_box.append(delete_button)
+                row.set_child(row_box)
+                listbox.append(row)
+
+        def empty_trash(_button) -> None:
+            if not self._confirm(
+                tr("Empty Trash?"),
+                tr("All notes in Trash will be deleted permanently. This cannot be undone."),
+                tr("Empty Trash"),
+            ):
+                return
+            try:
+                count = self._store.empty_trash()
+            except Exception as exc:
+                self.ctx.notify(tr("Could not empty Trash: {error}", error=exc))
+                return
+            refresh()
+            self.ctx.notify(tr("Trash emptied: {count}", count=count))
+
+        empty_button.connect("clicked", empty_trash)
+        refresh()
+        self._trash_dialog = window
+        window.present()
 
     def _refresh_folders_after_delete(self) -> None:
         """Оновити меню папок після видалення нотатки/папки."""

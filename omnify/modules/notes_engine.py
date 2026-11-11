@@ -180,6 +180,16 @@ class NoteStore:
         """Папка для картинок усіх нотаток."""
         return self.root / "assets"
 
+    @property
+    def trash_dir(self) -> Path:
+        """Службова папка для нотаток, які користувач прибрав у Trash.
+
+        Вона починається з крапки, тому ``load()``, ``folders()`` і
+        синхронізація не показують ці нотатки як звичайні. Файли в Trash
+        можна відновити разом із папкою, у якій вони лежали.
+        """
+        return self.root / ".trash"
+
     # ------------------------------------------------------------------
     # Читання та запис
     # ------------------------------------------------------------------
@@ -263,6 +273,110 @@ class NoteStore:
             shutil.rmtree(self.assets_dir / note_id, ignore_errors=True)
 
         self._remove_empty_folder(path.parent)
+
+    def trash_note(self, note: Note) -> Path:
+        """Перемістити нотатку в Trash, не втрачаючи її текст і картинки.
+
+        Файл зберігає відносний шлях усередині ``.trash/``, тому після
+        відновлення нотатка повертається у свою початкову папку. Картинки
+        залишаються в ``assets/<id>/`` і видаляються лише під час
+        остаточного очищення Trash.
+        """
+        source = Path(note.path) if note.path else self._note_path(note)
+        try:
+            relative = source.relative_to(self.root)
+        except ValueError as exc:
+            raise ValueError("Note is outside notes") from exc
+        if relative.parts and relative.parts[0] == ".trash":
+            raise ValueError("Note is already in Trash")
+
+        target = self.trash_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            # Дуже рідкісний випадок: у Trash уже є файл із таким шляхом.
+            # Додаємо короткий суфікс, щоб не перезаписати старі дані.
+            target = target.with_name(
+                f"{target.stem}-{uuid4().hex[:8]}{target.suffix}"
+            )
+
+        shutil.move(str(source), str(target))
+        note.path = target
+        self._remove_empty_folder(source.parent)
+        return target
+
+    def trashed_notes(self) -> list[Note]:
+        """Повернути нотатки з Trash у порядку останнього переміщення."""
+        if not self.trash_dir.is_dir():
+            return []
+
+        notes: list[Note] = []
+        for path in sorted(self.trash_dir.rglob("*.md"), key=lambda item: str(item).casefold()):
+            try:
+                relative = path.relative_to(self.trash_dir)
+                note = self._read_note(path)
+            except (OSError, ValueError):
+                continue
+            note.folder = relative.parent.as_posix() if relative.parent != Path(".") else ""
+            note.path = path
+            notes.append(note)
+
+        def modified(note: Note) -> float:
+            try:
+                return Path(note.path).stat().st_mtime if note.path else 0.0
+            except OSError:
+                return 0.0
+
+        notes.sort(key=modified, reverse=True)
+        return notes
+
+    def restore_trashed(self, note: Note) -> Note:
+        """Повернути нотатку з Trash на її попереднє місце."""
+        source = Path(note.path) if note.path else None
+        if source is None:
+            raise ValueError("Trashed note has no file path")
+        try:
+            relative = source.relative_to(self.trash_dir)
+        except ValueError as exc:
+            raise ValueError("Note is not in Trash") from exc
+
+        target = self.root / relative
+        if target.exists():
+            raise ValueError(f"Note already exists: {target.name}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+
+        note.folder = relative.parent.as_posix() if relative.parent != Path(".") else ""
+        note.path = target
+        self._remove_empty_folder(source.parent)
+        return note
+
+    def purge_trashed(self, note: Note) -> None:
+        """Остаточно видалити одну нотатку з Trash та її картинки."""
+        source = Path(note.path) if note.path else None
+        if source is None:
+            raise ValueError("Trashed note has no file path")
+        try:
+            source.relative_to(self.trash_dir)
+        except ValueError as exc:
+            raise ValueError("Note is not in Trash") from exc
+
+        try:
+            source.unlink()
+        except FileNotFoundError:
+            pass
+
+        note_id = self._safe_id(note.id)
+        if note_id:
+            shutil.rmtree(self.assets_dir / note_id, ignore_errors=True)
+        self._remove_empty_folder(source.parent)
+
+    def empty_trash(self) -> int:
+        """Остаточно видалити всі нотатки з Trash; повернути їх кількість."""
+        notes = self.trashed_notes()
+        for note in notes:
+            self.purge_trashed(note)
+        self._remove_empty_folder(self.trash_dir)
+        return len(notes)
 
     # ------------------------------------------------------------------
     # Папки
@@ -538,7 +652,7 @@ class NoteStore:
             self.root,
             target,
             dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(".backups", "*.tmp"),
+            ignore=shutil.ignore_patterns(".backups", ".trash", "*.tmp"),
         )
         return target
 

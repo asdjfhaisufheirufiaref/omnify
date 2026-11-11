@@ -125,6 +125,83 @@ class NoteStoreTests(unittest.TestCase):
             self.assertFalse(asset.exists())
             self.assertFalse(asset.parent.exists())
 
+    def test_trash_keeps_note_and_assets_out_of_the_active_list(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = NoteStore(root)
+            note = Note(label="Draft", contents="Keep me", folder="Work")
+            store.save(note)
+            original_path = note.path
+            source = root / "photo.png"
+            source.write_bytes(b"png")
+            asset = root / store.import_image(note, source)
+
+            trash_path = store.trash_note(note)
+
+            self.assertFalse(original_path.exists())
+            self.assertTrue(trash_path.is_file())
+            self.assertTrue(asset.is_file())
+            self.assertEqual(store.load(), [])
+            trashed = store.trashed_notes()
+            self.assertEqual(len(trashed), 1)
+            self.assertEqual(trashed[0].id, note.id)
+            self.assertEqual(trashed[0].folder, "Work")
+            self.assertEqual(trashed[0].contents, "Keep me")
+
+    def test_trashed_note_can_be_restored_to_its_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = NoteStore(root)
+            note = Note(label="Restore me", contents="Text", folder="Work/Sub")
+            store.save(note)
+            original_path = note.path
+            store.trash_note(note)
+
+            trashed = store.trashed_notes()[0]
+            restored = store.restore_trashed(trashed)
+
+            self.assertEqual(restored.id, note.id)
+            self.assertEqual(restored.folder, "Work/Sub")
+            self.assertEqual(restored.path, original_path)
+            self.assertTrue(original_path.is_file())
+            self.assertEqual(store.trashed_notes(), [])
+            self.assertEqual(store.load()[0].contents, "Text")
+
+    def test_empty_trash_removes_files_and_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = NoteStore(root)
+            notes = [
+                Note(label="One", contents="1", folder="Work"),
+                Note(label="Two", contents="2"),
+            ]
+            for note in notes:
+                store.save(note)
+                source = root / f"{note.id}.png"
+                source.write_bytes(b"png")
+                store.import_image(note, source)
+                store.trash_note(note)
+
+            self.assertEqual(len(store.trashed_notes()), 2)
+            self.assertEqual(store.empty_trash(), 2)
+            self.assertFalse(store.trash_dir.exists())
+            self.assertEqual(store.load(), [])
+            for note in notes:
+                self.assertFalse((store.assets_dir / note.id).exists())
+
+    def test_sync_to_does_not_copy_trash(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            store = NoteStore(base / "notes")
+            note = Note(label="Trashed", contents="Hidden")
+            store.save(note)
+            store.trash_note(note)
+
+            target = store.sync_to(base / "copy")
+
+            self.assertFalse((target / ".trash").exists())
+            self.assertEqual(list(target.rglob("*.md")), [])
+
     def test_rename_folder_moves_notes_and_preserves_nested_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             store = NoteStore(temporary)

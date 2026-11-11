@@ -1346,6 +1346,40 @@ TRANSLATIONS = {
     ),
     "Note deleted": "Нотатку видалено",
     "Could not delete note: {error}": "Не вдалося видалити нотатку: {error}",
+    "Move to Trash": "Перемістити в кошик",
+    "Move note to Trash?": "Перемістити нотатку в кошик?",
+    "The note and its images will be moved to Trash. You can restore it later.": (
+        "Нотатку та її зображення буде переміщено в кошик. Їх можна "
+        "відновити пізніше."
+    ),
+    "Note moved to Trash": "Нотатку переміщено в кошик",
+    "Could not move note to Trash: {error}": (
+        "Не вдалося перемістити нотатку в кошик: {error}"
+    ),
+    "Trash…": "Кошик…",
+    "Trash": "Кошик",
+    "Empty Trash": "Очистити кошик",
+    "Trash is empty.": "Кошик порожній.",
+    "Restore": "Відновити",
+    "Delete permanently": "Видалити назавжди",
+    "Delete permanently?": "Видалити назавжди?",
+    "The note and its images will be deleted permanently. This cannot be undone.": (
+        "Нотатку та її зображення буде видалено назавжди. Дію неможливо "
+        "скасувати."
+    ),
+    "Note permanently deleted": "Нотатку видалено назавжди",
+    "Could not delete note permanently: {error}": (
+        "Не вдалося видалити нотатку назавжди: {error}"
+    ),
+    "Note restored": "Нотатку відновлено",
+    "Could not restore note: {error}": "Не вдалося відновити нотатку: {error}",
+    "Empty Trash?": "Очистити кошик?",
+    "All notes in Trash will be deleted permanently. This cannot be undone.": (
+        "Усі нотатки з кошика буде видалено назавжди. Дію неможливо "
+        "скасувати."
+    ),
+    "Trash emptied: {count}": "Кошик очищено. Видалено нотаток: {count}",
+    "Could not empty Trash: {error}": "Не вдалося очистити кошик: {error}",
     "Export note": "Експортувати нотатку",
     "HTML files": "Файли HTML",
     "PDF files": "Файли PDF",
