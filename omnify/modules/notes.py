@@ -110,6 +110,7 @@ class NotesModule(BaseModule):
         # його в атрибуті, Python може зібрати об'єкт збирачем сміття,
         # поки діалог ще показується.
         self._image_dialog = None
+        self._import_dialog = None
         self._export_dialog = None
         self._export_all_dialog = None
         self._sync_dialog = None
@@ -476,6 +477,7 @@ class NotesModule(BaseModule):
         box.set_margin_end(8)
 
         actions = [
+            (tr("Import Markdown files…"), self._on_import_markdown),
             (tr("Export as HTML…"), self._on_export_html),
             (tr("Export as PDF…"), self._on_export_pdf),
             (tr("Export all notes as HTML…"), self._on_export_all_html),
@@ -2031,6 +2033,66 @@ class NotesModule(BaseModule):
 
         dialog.connect("response", on_response)
         self._export_dialog = dialog
+        dialog.show()
+
+    def _on_import_markdown(self) -> None:
+        """Імпортувати один або кілька зовнішніх Markdown-файлів."""
+        from gi.repository import Gtk
+
+        if self._store is None:
+            return
+        self._sync_current_note()
+        self._save_current_note()
+
+        dialog = Gtk.FileChooserNative(
+            title=tr("Import Markdown files"),
+            action=Gtk.FileChooserAction.OPEN,
+            transient_for=self._parent_window(),
+        )
+        dialog.set_select_multiple(True)
+        markdown_filter = Gtk.FileFilter()
+        markdown_filter.set_name(tr("Markdown files"))
+        markdown_filter.add_pattern("*.md")
+        markdown_filter.add_pattern("*.markdown")
+        markdown_filter.add_mime_type("text/markdown")
+        dialog.add_filter(markdown_filter)
+
+        folder = (
+            self._folder_filter
+            if self._folder_filter not in {_ALL_NOTES, _UNFILED}
+            else ""
+        )
+
+        def on_response(native, response):
+            self._import_dialog = None
+            if response != Gtk.ResponseType.ACCEPT:
+                native.destroy()
+                return
+            files = native.get_files() or []
+            native.destroy()
+            imported = 0
+            last_error = None
+            for file in files:
+                path = file.get_path() if file is not None else None
+                if not path:
+                    continue
+                try:
+                    self._store.import_markdown(path, folder=folder)
+                    imported += 1
+                except Exception as exc:
+                    last_error = exc
+            if imported:
+                self._reload_notes_from_store(self._selected_id)
+                self.ctx.notify(
+                    tr("Imported Markdown files: {count}", count=imported)
+                )
+            elif last_error is not None:
+                self.ctx.notify(
+                    tr("Could not import Markdown: {error}", error=last_error)
+                )
+
+        dialog.connect("response", on_response)
+        self._import_dialog = dialog
         dialog.show()
 
     def _on_export_html(self) -> None:

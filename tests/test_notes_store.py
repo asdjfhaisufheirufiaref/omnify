@@ -201,6 +201,51 @@ class NoteStoreTests(unittest.TestCase):
             self.assertTrue(any(store.root.rglob("*.md")))
             self.assertTrue(any(store.assets_dir.rglob("*.png")))
 
+    def test_import_markdown_creates_copy_without_touching_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            store = NoteStore(base / "notes")
+            source = base / "External note.md"
+            source.write_text(
+                "---\n"
+                "id: external-id\n"
+                "title: Imported title\n"
+                "tags: [\"work\", \"ideas\"]\n"
+                "pinned: true\n"
+                "---\n"
+                "# Body\n\nImported text.",
+                encoding="utf-8",
+            )
+
+            note = store.import_markdown(source, folder="Inbox")
+
+            self.assertEqual(note.label, "Imported title")
+            self.assertEqual(note.tags, ["work", "ideas"])
+            self.assertTrue(note.pinned)
+            self.assertEqual(note.folder, "Inbox")
+            self.assertEqual(note.contents, "# Body\n\nImported text.")
+            self.assertTrue(note.path.is_file())
+            self.assertEqual(source.read_text(encoding="utf-8")[:3], "---")
+            loaded = {item.id: item for item in store.load()}
+            self.assertIn(note.id, loaded)
+
+    def test_import_markdown_generates_new_id_on_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            store = NoteStore(base / "notes")
+            original = Note(id="fixed-id", label="Original", contents="First")
+            store.save(original)
+            source = base / "copy.md"
+            source.write_text(
+                "---\nid: fixed-id\ntitle: Copy\n---\nSecond",
+                encoding="utf-8",
+            )
+
+            imported = store.import_markdown(source)
+
+            self.assertNotEqual(imported.id, original.id)
+            self.assertEqual(len(store.load()), 2)
+
     def test_two_way_sync_imports_and_exports_newer_notes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

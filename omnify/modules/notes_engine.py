@@ -357,6 +357,30 @@ class NoteStore:
     # ------------------------------------------------------------------
     # Картинки
     # ------------------------------------------------------------------
+    def import_markdown(self, source: Path | str, folder: str = "") -> Note:
+        """Імпортувати зовнішній Markdown-файл як нову нотатку.
+
+        Якщо у файлі є front matter, використовуємо його назву, теги та
+        картинки. Старий файл не змінюється: ми створюємо нову копію в
+        ``notes/`` зі стабільним новим id.
+        """
+        source = Path(source).expanduser().resolve()
+        if source.is_relative_to(self.root):
+            raise ValueError("Markdown file is already inside notes")
+        if source.suffix.lower() not in {".md", ".markdown"}:
+            raise ValueError("Only Markdown files can be imported")
+        if not source.is_file():
+            raise ValueError(f"Markdown file does not exist: {source}")
+
+        note = self._read_note(source)
+        note.path = None
+        note.folder = self._safe_folder(folder) if folder else ""
+        existing_ids = {item.id for item in self.load()}
+        if note.id in existing_ids:
+            note.id = uuid4().hex
+        self.save(note)
+        return note
+
     def import_image(self, note: Note, source: Path | str) -> str:
         """Скопіювати картинку в assets і повернути Markdown-шлях."""
         source = Path(source).expanduser()
