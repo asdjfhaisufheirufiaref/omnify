@@ -93,6 +93,40 @@ class NoteStoreTests(unittest.TestCase):
             self.assertEqual(loaded.folder, "Work")
             self.assertEqual(store.folders(), ["Work"])
 
+    def test_rename_tag_updates_all_notes_case_insensitively(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            first = Note(label="First", contents="A", tags=["Work", "ideas"])
+            second = Note(label="Second", contents="B", tags=["work"])
+            third = Note(label="Third", contents="C", tags=["other"])
+            for note in (first, second, third):
+                store.save(note)
+
+            self.assertEqual(store.rename_tag("#WORK", "Projects"), 2)
+            loaded = {note.id: note.tags for note in store.load()}
+            self.assertEqual(loaded[first.id], ["Projects", "ideas"])
+            self.assertEqual(loaded[second.id], ["Projects"])
+            self.assertEqual(loaded[third.id], ["other"])
+            self.assertEqual(store.rename_tag("Projects", "projects"), 0)
+            with self.assertRaises(ValueError):
+                store.rename_tag("Projects", "  ")
+
+    def test_delete_tag_removes_only_matching_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            first = Note(label="First", contents="A", tags=["work", "ideas"])
+            second = Note(label="Second", contents="B", tags=["WORK"])
+            third = Note(label="Third", contents="C", tags=["other"])
+            for note in (first, second, third):
+                store.save(note)
+
+            self.assertEqual(store.delete_tag("#work"), 2)
+            loaded = {note.id: note.tags for note in store.load()}
+            self.assertEqual(loaded[first.id], ["ideas"])
+            self.assertEqual(loaded[second.id], [])
+            self.assertEqual(loaded[third.id], ["other"])
+            self.assertEqual(store.delete_tag("missing"), 0)
+
     def test_pinned_flag_roundtrips_and_sorts_notes_first(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             store = NoteStore(temporary)

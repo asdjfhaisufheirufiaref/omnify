@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **451 tests**.
+module are implemented. The full headless suite is green: **453 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -131,8 +131,8 @@ The Notes module is implemented:
 - each note is a Markdown file under `notes/` in the project root;
 - notes have YAML-style front matter with a stable id, title, tags and
   timestamp;
-- notes can live in one-level folders under `notes/`; the sidebar filters by
-  folder, can create folders, rename them, and delete one (its notes move to
+- notes can live in folders under `notes/`; the sidebar filters by folder,
+  can create folders, rename them, and delete one (its notes move to
   **Unfiled** rather than being deleted); destructive folder operations
   clean up empty nested directories;
 - list/search, create, select, edit and delete notes; pinned notes sort first;
@@ -155,7 +155,9 @@ The Notes module is implemented:
   case, next/previous wrap-around, single replacement and replace-all;
   replacement text is treated literally (no regex/backslash surprises);
 - tags are edited as a comma-separated line and are searchable with `#tag`;
-  the tag menu filters by tag and the tag field offers known-tag completion;
+  the tag menu filters by tag and the field offers known-tag completion;
+  **Manage tags…** renames or deletes a tag across all notes at once, with
+  case-insensitive matching and duplicate prevention;
 - a formatting toolbar inserts bold, italic, strike-through, headings,
   lists, quotes, code and links; keyboard shortcuts cover save, search,
   bold, italic and link insertion;
@@ -195,7 +197,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **451 OK**
+- `python3 -m unittest discover -s tests` → **453 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance

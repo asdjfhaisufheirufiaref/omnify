@@ -122,6 +122,7 @@ class NotesModule(BaseModule):
         self._trash_dialog = None
         self._history_dialog = None
         self._find_dialog = None
+        self._tag_manager_window = None
 
         # Для кожного якоря картинки зберігаємо Markdown-текст, який
         # потрібно записати у файл. Ключ — Gtk.TextChildAnchor.
@@ -2151,6 +2152,12 @@ class NotesModule(BaseModule):
                     lambda _button, value=tag: self._filter_by_tag(value),
                 )
                 box.append(button)
+            box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+            manage = Gtk.Button(label=tr("Manage tags…"))
+            manage.set_halign(Gtk.Align.FILL)
+            manage.get_style_context().add_class("notes-menu-item")
+            manage.connect("clicked", lambda _button: self._on_manage_tags())
+            box.append(manage)
 
         self._refresh_tag_button()
 
@@ -2163,6 +2170,203 @@ class NotesModule(BaseModule):
         model.clear()
         for tag, _count in values:
             model.append([tag])
+
+    def _on_manage_tags(self) -> None:
+        """Відкрити вікно масового перейменування та видалення тегів."""
+        from gi.repository import Gtk
+
+        if self._store is None:
+            return
+        counts = self._tag_counts()
+        if not counts:
+            self.ctx.notify(tr("No tags yet"))
+            return
+        existing = getattr(self, "_tag_manager_window", None)
+        if existing is not None:
+            existing.present()
+            return
+        self._sync_current_note()
+        self._save_current_note()
+        popover = getattr(self, "_tag_popover", None)
+        if popover is not None:
+            popover.popdown()
+
+        window = Gtk.Window(title=tr("Manage tags"))
+        window.set_transient_for(self._parent_window())
+        window.set_modal(True)
+        window.set_destroy_with_parent(True)
+        window.set_default_size(480, 320)
+        window.connect(
+            "destroy",
+            lambda _window: setattr(self, "_tag_manager_window", None),
+        )
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        outer.set_margin_top(16)
+        outer.set_margin_bottom(16)
+        outer.set_margin_start(16)
+        outer.set_margin_end(16)
+
+        title = Gtk.Label(label=tr("Manage tags"), xalign=0.0)
+        title.get_style_context().add_class("omnify-card-title")
+        outer.append(title)
+        hint = Gtk.Label(
+            label=tr(
+                "Rename a tag everywhere or remove it from all notes."
+            ),
+            xalign=0.0,
+            wrap=True,
+        )
+        hint.get_style_context().add_class("omnify-dim")
+        outer.append(hint)
+
+        tag_rows = list(counts)
+        dropdown = Gtk.DropDown.new_from_strings(
+            [f"#{tag} ({count})" for tag, count in tag_rows]
+        )
+        dropdown.set_hexpand(True)
+        tag_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        tag_label = Gtk.Label(label=tr("Tag"), xalign=0.0)
+        tag_label.set_size_request(90, -1)
+        tag_row.append(tag_label)
+        tag_row.append(dropdown)
+        outer.append(tag_row)
+
+        entry = Gtk.Entry()
+        entry.set_hexpand(True)
+        entry.set_placeholder_text(tr("New tag name"))
+        rename_button = Gtk.Button(label=tr("Rename"))
+        rename_button.get_style_context().add_class("notes-folder-button")
+        rename_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        rename_row.append(entry)
+        rename_row.append(rename_button)
+        outer.append(rename_row)
+
+        status = Gtk.Label(label="", xalign=0.0, wrap=True)
+        status.get_style_context().add_class("omnify-dim")
+        outer.append(status)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        delete_button = Gtk.Button(label=tr("Delete tag"))
+        delete_button.get_style_context().add_class("notes-folder-button")
+        delete_button.add_css_class("destructive-action")
+        close_button = Gtk.Button(label=tr("Close"))
+        close_button.get_style_context().add_class("notes-folder-button")
+        actions.append(delete_button)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        actions.append(spacer)
+        actions.append(close_button)
+        outer.append(actions)
+        window.set_child(outer)
+
+        def current_tag() -> str:
+            index = dropdown.get_selected()
+            if index < 0 or index >= len(tag_rows):
+                return ""
+            return tag_rows[index][0]
+
+        def refresh_dropdown(select_tag: str | None = None) -> None:
+            nonlocal tag_rows
+            tag_rows = self._tag_counts()
+            dropdown.set_model(
+                Gtk.StringList.new(
+                    [f"#{tag} ({count})" for tag, count in tag_rows]
+                )
+            )
+            has_tags = bool(tag_rows)
+            entry.set_sensitive(has_tags)
+            rename_button.set_sensitive(has_tags)
+            delete_button.set_sensitive(has_tags)
+            if not has_tags:
+                entry.set_text("")
+                return
+            index = 0
+            if select_tag:
+                for position, (tag, _count) in enumerate(tag_rows):
+                    if tag.casefold() == select_tag.casefold():
+                        index = position
+                        break
+            dropdown.set_selected(index)
+            entry.set_text(tag_rows[index][0])
+
+        def on_selected(*_args) -> None:
+            tag = current_tag()
+            if tag:
+                entry.set_text(tag)
+
+        def reload_after_tag_change(clear_filter: bool = False) -> None:
+            current_id = self._current_note.id if self._current_note else None
+            if clear_filter:
+                self._search_query = ""
+                self._search_entry.set_text("")
+            self._reload_notes_from_store(preserve_id=current_id)
+
+        def on_rename(_button) -> None:
+            old = current_tag()
+            new = entry.get_text().strip()
+            if not old or not new:
+                status.set_text(tr("New tag name is empty"))
+                return
+            self._sync_current_note()
+            self._save_current_note()
+            try:
+                changed = self._store.rename_tag(old, new)
+            except (OSError, ValueError) as exc:
+                status.set_text(tr("Could not rename tag: {error}", error=exc))
+                return
+            if changed == 0:
+                status.set_text(tr("No notes changed"))
+                return
+            if self._active_tag().casefold() == old.casefold():
+                self._search_query = f"#{new.casefold()}"
+                self._search_entry.set_text(f"#{new}")
+            reload_after_tag_change()
+            refresh_dropdown(select_tag=new)
+            status.set_text(tr("Renamed in {count} notes", count=changed))
+            self.ctx.notify(tr("Tag renamed in {count} notes", count=changed))
+
+        def on_delete(_button) -> None:
+            old = current_tag()
+            if not old:
+                return
+            count = next(
+                (
+                    value
+                    for tag, value in tag_rows
+                    if tag.casefold() == old.casefold()
+                ),
+                0,
+            )
+            if not self._confirm(
+                tr("Delete tag?"),
+                tr("The tag will be removed from {count} notes.", count=count),
+                tr("Delete tag"),
+            ):
+                return
+            self._sync_current_note()
+            self._save_current_note()
+            try:
+                changed = self._store.delete_tag(old)
+            except (OSError, ValueError) as exc:
+                status.set_text(tr("Could not delete tag: {error}", error=exc))
+                return
+            if self._active_tag().casefold() == old.casefold():
+                reload_after_tag_change(clear_filter=True)
+            else:
+                reload_after_tag_change()
+            refresh_dropdown()
+            status.set_text(tr("Tag removed from {count} notes", count=changed))
+            self.ctx.notify(tr("Tag removed from {count} notes", count=changed))
+
+        dropdown.connect("notify::selected", on_selected)
+        rename_button.connect("clicked", on_rename)
+        delete_button.connect("clicked", on_delete)
+        close_button.connect("clicked", lambda _button: window.close())
+        refresh_dropdown()
+
+        self._tag_manager_window = window
+        window.present()
 
     def _filter_by_tag(self, tag: str) -> None:
         """Підставити #тег у поле пошуку й закрити меню."""

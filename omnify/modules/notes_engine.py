@@ -490,6 +490,61 @@ class NoteStore:
         return moved
 
     # ------------------------------------------------------------------
+    # Теги
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _clean_tag(tag: str) -> str:
+        """Прибрати пробіли та провідний ``#`` з назви тегу."""
+        return str(tag).strip().lstrip("#").strip()
+
+    def rename_tag(self, old_tag: str, new_tag: str) -> int:
+        """Перейменувати тег у всіх нотатках і повернути їх кількість.
+
+        Порівняння не враховує регістр. Якщо в нотатці вже є новий тег,
+        повтор не створюється. Порожні назви заборонені.
+        """
+        old = self._clean_tag(old_tag)
+        new = self._clean_tag(new_tag)
+        if not old:
+            raise ValueError("Old tag is empty")
+        if not new:
+            raise ValueError("New tag is empty")
+        if old.casefold() == new.casefold():
+            return 0
+
+        changed = 0
+        for note in self.load():
+            if not any(tag.casefold() == old.casefold() for tag in note.tags):
+                continue
+            note.tags = [
+                new if tag.casefold() == old.casefold() else tag
+                for tag in note.tags
+            ]
+            note.tags = _normalise_tags(note.tags)
+            self.save(note)
+            changed += 1
+        return changed
+
+    def delete_tag(self, tag: str) -> int:
+        """Видалити тег з усіх нотаток і повернути кількість змінених."""
+        target = self._clean_tag(tag)
+        if not target:
+            return 0
+        changed = 0
+        for note in self.load():
+            remaining = [
+                value
+                for value in note.tags
+                if value.casefold() != target.casefold()
+            ]
+            if len(remaining) == len(note.tags):
+                continue
+            note.tags = remaining
+            self.save(note)
+            changed += 1
+        return changed
+
+    # ------------------------------------------------------------------
     # Картинки
     # ------------------------------------------------------------------
     def duplicate_note(self, note: Note, folder: str | None = None) -> Note:
