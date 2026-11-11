@@ -1193,6 +1193,10 @@ class NotesModule(BaseModule):
         window.set_child(outer)
         window.present()
 
+    def open_today_journal(self) -> None:
+        """Публічна точка входу для Dashboard та інших модулів."""
+        self._on_open_journal()
+
     def _on_open_journal(self, _button=None) -> None:
         """Відкрити або створити щоденну нотатку на сьогодні."""
         self._sync_current_note()

@@ -1369,6 +1369,7 @@ TRANSLATIONS = {
         "Нотатку буде створено в поточній папці."
     ),
     "Open today's journal": "Відкрити щоденник на сьогодні",
+    "Today's journal": "Щоденник на сьогодні",
     "Journal": "Щоденник",
     "Find and replace…": "Знайти й замінити…",
     "Find and replace": "Знайти й замінити",

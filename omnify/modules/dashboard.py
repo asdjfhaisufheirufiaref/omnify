@@ -17,12 +17,14 @@ from .browser import BrowserModule
 from .browser_engine import detect_browser
 from .calculator import CalculatorModule
 from .calendar import CalendarModule
+from .notes import NotesModule
 from .stopwatch import StopwatchModule
 from .taskmanager import TaskManagerModule
 from .timer import TimerModule
 
 #: Tiles in display order.  The dashboard itself is not repeated.
 TOOL_MODULES = (
+    NotesModule,
     CalculatorModule,
     BrowserModule,
     CalendarModule,
@@ -92,6 +94,10 @@ class DashboardModule(BaseModule):
         root.append(hero)
 
         quick = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        journal_button = Gtk.Button(label=tr("Today's journal"))
+        journal_button.get_style_context().add_class("dashboard-quick")
+        journal_button.connect("clicked", lambda _button: self._open_journal())
+        quick.append(journal_button)
         for label, module_id in (
             ("New calculation", "calculator"),
             ("Today's calendar", "calendar"),
@@ -120,6 +126,14 @@ class DashboardModule(BaseModule):
         self._refresh_clock()
         self._refresh_glance()
         return root
+
+    def _open_journal(self) -> None:
+        """Open Notes and jump straight to today's journal note."""
+        self.ctx.open_module("notes")
+        module = self.ctx.get_module("notes")
+        opener = getattr(module, "open_today_journal", None)
+        if callable(opener):
+            opener()
 
     def _build_glance(self, Gtk) -> Any:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
