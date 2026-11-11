@@ -222,17 +222,73 @@ class NoteStoreTests(unittest.TestCase):
             self.assertTrue((store.assets_dir / note.id / "photo.png").is_file())
             self.assertEqual(len(store.load()), 2)
 
+    def test_automatic_history_keeps_the_previous_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            note = Note(label="History", contents="Initial")
+            store.save(note)
+
+            note.contents = "First edit"
+            store.save(note)
+            versions = store.versions(note)
+            self.assertEqual(len(versions), 1)
+            self.assertEqual(versions[0].contents, "Initial")
+            self.assertEqual(len(store.load()), 1)
+            self.assertNotIn(".history", store.folders())
+
+            # Другий запис одразу після першого не створює ще один знімок:
+            # автознімки мають п'ятихвилинний інтервал.
+            note.contents = "Second edit"
+            store.save(note)
+            self.assertEqual(len(store.versions(note)), 1)
+
+    def test_history_version_can_be_restored_with_a_safety_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            note = Note(label="Restore history", contents="Old text", tags=["old"])
+            store.save(note)
+            note.contents = "New text"
+            note.tags = ["new"]
+            store.save(note)
+
+            old_version = store.versions(note)[0]
+            store.restore_version(note, old_version)
+
+            self.assertEqual(note.contents, "Old text")
+            self.assertEqual(note.tags, ["old"])
+            self.assertEqual(store.load()[0].contents, "Old text")
+            # Перед відкатом поточна версія теж потрапила в історію.
+            self.assertGreaterEqual(len(store.versions(note)), 2)
+
+    def test_history_is_limited_and_removed_with_the_note(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = NoteStore(temporary)
+            note = Note(label="Many versions", contents="Text")
+            store.save(note)
+            for _ in range(25):
+                store.create_version(note)
+
+            self.assertEqual(len(store.versions(note)), 20)
+            history_folder = store.history_dir / note.id
+            self.assertTrue(history_folder.is_dir())
+
+            store.delete(note)
+            self.assertFalse(history_folder.exists())
+
     def test_sync_to_does_not_copy_trash(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             store = NoteStore(base / "notes")
             note = Note(label="Trashed", contents="Hidden")
             store.save(note)
+            note.contents = "Edited before trash"
+            store.save(note)
             store.trash_note(note)
 
             target = store.sync_to(base / "copy")
 
             self.assertFalse((target / ".trash").exists())
+            self.assertFalse((target / ".history").exists())
             self.assertEqual(list(target.rglob("*.md")), [])
 
     def test_rename_folder_moves_notes_and_preserves_nested_paths(self) -> None:

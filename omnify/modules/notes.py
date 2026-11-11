@@ -19,7 +19,9 @@ from __future__ import annotations
 import re
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
@@ -116,6 +118,7 @@ class NotesModule(BaseModule):
         self._sync_dialog = None
         self._restore_dialog = None
         self._trash_dialog = None
+        self._history_dialog = None
 
         # Для кожного якоря картинки зберігаємо Markdown-текст, який
         # потрібно записати у файл. Ключ — Gtk.TextChildAnchor.
@@ -479,6 +482,8 @@ class NotesModule(BaseModule):
 
         actions = [
             (tr("Duplicate note"), self._on_duplicate_note),
+            (tr("Save version"), self._on_save_version),
+            (tr("Version history…"), self._on_open_history),
             (tr("Import Markdown files…"), self._on_import_markdown),
             (tr("Export as HTML…"), self._on_export_html),
             (tr("Export as PDF…"), self._on_export_pdf),
@@ -1079,6 +1084,313 @@ class NotesModule(BaseModule):
             self._search_entry.set_text("")
         self._reload_notes_from_store(clone.id)
         self.ctx.notify(tr("Note duplicated"))
+
+    @staticmethod
+    def _format_version_time(path: Path | None) -> str:
+        """Показати час створення знімка у зрозумілому форматі."""
+        if path is None:
+            return ""
+        stem = path.stem.split("-", 1)[0]
+        try:
+            stamp = datetime.strptime(stem, "%Y%m%dT%H%M%S%fZ")
+        except ValueError:
+            try:
+                stamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+            except OSError:
+                return path.stem
+        return (
+            stamp.replace(tzinfo=timezone.utc)
+            .astimezone()
+            .strftime("%d.%m.%Y %H:%M:%S")
+        )
+
+    def _on_save_version(self) -> None:
+        """Створити ручний знімок поточної нотатки."""
+        if self._current_note is None or self._store is None:
+            return
+        self._sync_current_note()
+        self._save_current_note()
+        try:
+            path = self._store.create_version(self._current_note, force=True)
+        except Exception as exc:
+            self.ctx.notify(tr("Could not save version: {error}", error=exc))
+            return
+        if path is None:
+            self.ctx.notify(tr("Could not save version"))
+            return
+        self.ctx.notify(tr("Version saved"))
+
+    def _on_open_history(self) -> None:
+        """Показати історію версій поточної нотатки з preview та відкатом."""
+        from gi.repository import Gtk, Pango
+
+        if self._store is None or self._current_note is None:
+            return
+        existing = getattr(self, "_history_dialog", None)
+        if existing is not None:
+            existing.present()
+            return
+
+        self._sync_current_note()
+        self._save_current_note()
+        note = self._current_note
+        if note is None:
+            return
+
+        window = Gtk.Window(title=tr("Version history"))
+        window.set_transient_for(self._parent_window())
+        window.set_modal(True)
+        window.set_destroy_with_parent(True)
+        window.set_default_size(820, 560)
+        window.connect(
+            "destroy",
+            lambda _window: setattr(self, "_history_dialog", None),
+        )
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_margin_top(12)
+        outer.set_margin_bottom(12)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        title = Gtk.Label(label=tr("Version history"), xalign=0.0)
+        title.set_hexpand(True)
+        title.get_style_context().add_class("omnify-card-title")
+        header.append(title)
+        header.append(
+            Gtk.Label(
+                label=note.label,
+                xalign=1.0,
+                ellipsize=Pango.EllipsizeMode.END,
+            )
+        )
+        outer.append(header)
+
+        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        paned.set_position(300)
+        paned.set_vexpand(True)
+
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        left.set_size_request(260, -1)
+        left_scroll = Gtk.ScrolledWindow()
+        left_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        left_scroll.set_vexpand(True)
+        listbox = Gtk.ListBox()
+        listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        left_scroll.set_child(listbox)
+        left.append(left_scroll)
+        paned.set_start_child(left)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        right.set_margin_start(12)
+        info = Gtk.Label(label=tr("No saved versions yet."), xalign=0.0)
+        info.set_ellipsize(Pango.EllipsizeMode.END)
+        info.get_style_context().add_class("omnify-dim")
+        right.append(info)
+
+        preview_scroll = Gtk.ScrolledWindow()
+        preview_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        preview_scroll.set_vexpand(True)
+        preview = Gtk.TextView()
+        preview.set_editable(False)
+        preview.set_cursor_visible(False)
+        preview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        preview.set_left_margin(10)
+        preview.set_right_margin(10)
+        preview.set_top_margin(8)
+        preview.set_bottom_margin(8)
+        preview.get_style_context().add_class("omnify-mono")
+        preview_scroll.set_child(preview)
+        right.append(preview_scroll)
+        paned.set_end_child(right)
+        outer.append(paned)
+
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        save_button = Gtk.Button(label=tr("Save version"))
+        clear_button = Gtk.Button(label=tr("Clear history"))
+        clear_button.set_sensitive(False)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        restore_button = Gtk.Button(label=tr("Restore version"))
+        restore_button.set_sensitive(False)
+        delete_button = Gtk.Button(label=tr("Delete version"))
+        delete_button.set_sensitive(False)
+        close_button = Gtk.Button(label=tr("Close"))
+        for button in (
+            save_button,
+            clear_button,
+            restore_button,
+            delete_button,
+            close_button,
+        ):
+            button.get_style_context().add_class("notes-folder-button")
+        footer.append(save_button)
+        footer.append(clear_button)
+        footer.append(spacer)
+        footer.append(restore_button)
+        footer.append(delete_button)
+        footer.append(close_button)
+        outer.append(footer)
+        window.set_child(outer)
+
+        preview_buffer = preview.get_buffer()
+        selected_version: list[Note | None] = [None]
+        row_versions: dict[Any, Note] = {}
+
+        def show_version(version: Note) -> None:
+            selected_version[0] = version
+            restore_button.set_sensitive(True)
+            delete_button.set_sensitive(True)
+            timestamp = self._format_version_time(version.path)
+            info.set_text(f"{timestamp} · {version.label}")
+            preview_buffer.set_text(version.contents)
+
+        def refresh(select_path: Path | None = None) -> None:
+            while True:
+                child = listbox.get_first_child()
+                if child is None:
+                    break
+                listbox.remove(child)
+            row_versions.clear()
+            selected_version[0] = None
+            restore_button.set_sensitive(False)
+            delete_button.set_sensitive(False)
+            versions = self._store.versions(note)
+            clear_button.set_sensitive(bool(versions))
+            if not versions:
+                empty_row = Gtk.ListBoxRow()
+                empty_row.set_selectable(False)
+                empty = Gtk.Label(
+                    label=tr("No saved versions yet."),
+                    xalign=0.0,
+                )
+                empty.set_margin_top(12)
+                empty.set_margin_bottom(12)
+                empty.set_margin_start(8)
+                empty.get_style_context().add_class("omnify-dim")
+                empty_row.set_child(empty)
+                listbox.append(empty_row)
+                info.set_text(tr("No saved versions yet."))
+                preview_buffer.set_text("")
+                return
+
+            target_row = None
+            for version in versions:
+                row = Gtk.ListBoxRow()
+                row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                row_box.set_margin_top(8)
+                row_box.set_margin_bottom(8)
+                row_box.set_margin_start(8)
+                row_box.set_margin_end(8)
+                time_label = Gtk.Label(
+                    label=self._format_version_time(version.path),
+                    xalign=0.0,
+                )
+                time_label.get_style_context().add_class("omnify-dim")
+                row_box.append(time_label)
+                snippet = Gtk.Label(
+                    label=self._note_snippet(version.contents) or tr("Empty note"),
+                    xalign=0.0,
+                )
+                snippet.set_ellipsize(Pango.EllipsizeMode.END)
+                row_box.append(snippet)
+                row.set_child(row_box)
+                row_versions[row] = version
+                listbox.append(row)
+                if select_path is not None and version.path == select_path:
+                    target_row = row
+
+            if target_row is None:
+                target_row = listbox.get_first_child()
+            if target_row is not None:
+                listbox.select_row(target_row)
+
+        def on_selected(_listbox, row) -> None:
+            version = row_versions.get(row)
+            if version is not None:
+                show_version(version)
+
+        def save_version(_button) -> None:
+            try:
+                path = self._store.create_version(note, force=True)
+            except Exception as exc:
+                self.ctx.notify(tr("Could not save version: {error}", error=exc))
+                return
+            if path is None:
+                self.ctx.notify(tr("Could not save version"))
+                return
+            refresh(path)
+            self.ctx.notify(tr("Version saved"))
+
+        def restore_version(_button) -> None:
+            version = selected_version[0]
+            if version is None:
+                return
+            if not self._confirm(
+                tr("Restore version?"),
+                tr(
+                    "The current note will be saved to history first, then this "
+                    "version will be restored."
+                ),
+                tr("Restore version"),
+            ):
+                return
+            try:
+                self._store.restore_version(note, version)
+            except Exception as exc:
+                self.ctx.notify(tr("Could not restore version: {error}", error=exc))
+                return
+            self._reload_notes_from_store(note.id)
+            self.ctx.notify(tr("Version restored"))
+            window.close()
+
+        def delete_version(_button) -> None:
+            version = selected_version[0]
+            if version is None:
+                return
+            if not self._confirm(
+                tr("Delete version?"),
+                tr("This saved version will be deleted permanently."),
+                tr("Delete version"),
+            ):
+                return
+            try:
+                self._store.delete_version(version)
+            except Exception as exc:
+                self.ctx.notify(tr("Could not delete version: {error}", error=exc))
+                return
+            refresh()
+            self.ctx.notify(tr("Version deleted"))
+
+        def clear_history(_button) -> None:
+            if not self._confirm(
+                tr("Clear history?"),
+                tr(
+                    "All saved versions of this note will be deleted. "
+                    "This cannot be undone."
+                ),
+                tr("Clear history"),
+            ):
+                return
+            try:
+                count = self._store.clear_history(note)
+            except Exception as exc:
+                self.ctx.notify(tr("Could not clear history: {error}", error=exc))
+                return
+            refresh()
+            self.ctx.notify(tr("History cleared: {count}", count=count))
+
+        listbox.connect("row-selected", on_selected)
+        save_button.connect("clicked", save_version)
+        restore_button.connect("clicked", restore_version)
+        delete_button.connect("clicked", delete_version)
+        clear_button.connect("clicked", clear_history)
+        close_button.connect("clicked", lambda _button: window.close())
+
+        refresh()
+        self._history_dialog = window
+        window.present()
 
     def _on_title_changed(self, entry) -> None:
         """Користувач змінив назву нотатки."""

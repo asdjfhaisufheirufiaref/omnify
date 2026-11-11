@@ -1363,6 +1363,39 @@ TRANSLATIONS = {
     "Duplicate note": "Створити копію нотатки",
     "Note duplicated": "Нотатку скопійовано",
     "Could not duplicate note: {error}": "Не вдалося скопіювати нотатку: {error}",
+    "Save version": "Зберегти версію",
+    "Version saved": "Версію збережено",
+    "Could not save version": "Не вдалося зберегти версію",
+    "Could not save version: {error}": "Не вдалося зберегти версію: {error}",
+    "Version history…": "Історія версій…",
+    "Version history": "Історія версій",
+    "No saved versions yet.": "Збережених версій ще немає.",
+    "Empty note": "Порожня нотатка",
+    "Restore version": "Відновити версію",
+    "Restore version?": "Відновити цю версію?",
+    "The current note will be saved to history first, then this version will be restored.": (
+        "Спочатку поточну нотатку буде збережено в історію, а потім "
+        "відновлено цю версію."
+    ),
+    "Version restored": "Версію відновлено",
+    "Could not restore version: {error}": (
+        "Не вдалося відновити версію: {error}"
+    ),
+    "Delete version": "Видалити версію",
+    "Delete version?": "Видалити цю версію?",
+    "This saved version will be deleted permanently.": (
+        "Цю збережену версію буде видалено назавжди."
+    ),
+    "Version deleted": "Версію видалено",
+    "Could not delete version: {error}": "Не вдалося видалити версію: {error}",
+    "Clear history": "Очистити історію",
+    "Clear history?": "Очистити історію?",
+    "All saved versions of this note will be deleted. This cannot be undone.": (
+        "Усі збережені версії цієї нотатки буде видалено. Дію неможливо "
+        "скасувати."
+    ),
+    "History cleared: {count}": "Історію очищено. Видалено версій: {count}",
+    "Could not clear history: {error}": "Не вдалося очистити історію: {error}",
     "Restore": "Відновити",
     "Delete permanently": "Видалити назавжди",
     "Delete permanently?": "Видалити назавжди?",

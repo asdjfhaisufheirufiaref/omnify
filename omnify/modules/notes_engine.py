@@ -19,10 +19,16 @@
       assets/
         abc123/
           photo.png
+      .trash/
+        abc123.md
+      .history/
+        abc123/
+          20261111T120000123456Z.md
 
 Кожна нотатка — окремий .md-файл. Це важливо: файли можна читати
 навіть без Omnify, копіювати на флешку або синхронізувати через
-Dropbox/Syncthing.
+Dropbox/Syncthing. Приховані ``.trash`` і ``.history`` — службові:
+вони не показуються як звичайні нотатки й не синхронізуються.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import unicodedata
 import zipfile
 from dataclasses import dataclass, field
@@ -41,6 +48,12 @@ from uuid import uuid4
 
 # Цей рядок відділяє службовий блок front matter від тексту нотатки.
 _FRONTMATTER_END = "\n---\n"
+
+# Автоматичні знімки історії не створюються частіше, ніж раз на 5 хвилин.
+# Ручний знімок через меню створюється завжди. На одну нотатку зберігаємо
+# останні 20 версій — цього достатньо для відкату й це не роздуває теку.
+_HISTORY_INTERVAL_SECONDS = 5 * 60
+_HISTORY_LIMIT = 20
 
 
 def _now() -> str:
@@ -190,6 +203,11 @@ class NoteStore:
         """
         return self.root / ".trash"
 
+    @property
+    def history_dir(self) -> Path:
+        """Службова папка зі знімками попередніх версій нотаток."""
+        return self.root / ".history"
+
     # ------------------------------------------------------------------
     # Читання та запис
     # ------------------------------------------------------------------
@@ -246,6 +264,7 @@ class NoteStore:
             "---\n"
             f"{note.contents}"
         )
+        self._snapshot_before_save(note, old_path)
         self._atomic_write(path, text)
 
         # Якщо нотатку переміщено в іншу папку або перейменовано, старий
@@ -267,10 +286,11 @@ class NoteStore:
         except FileNotFoundError:
             pass
 
-        # Картинки цієї нотатки більше не потрібні.
+        # Картинки та історія цієї нотатки більше не потрібні.
         note_id = self._safe_id(note.id)
         if note_id:
             shutil.rmtree(self.assets_dir / note_id, ignore_errors=True)
+            self.clear_history(note)
 
         self._remove_empty_folder(path.parent)
 
@@ -368,6 +388,7 @@ class NoteStore:
         note_id = self._safe_id(note.id)
         if note_id:
             shutil.rmtree(self.assets_dir / note_id, ignore_errors=True)
+            self.clear_history(note)
         self._remove_empty_folder(source.parent)
 
     def empty_trash(self) -> int:
@@ -499,6 +520,100 @@ class NoteStore:
             )
         self.save(clone)
         return clone
+
+    def create_version(self, note: Note, force: bool = True) -> Path | None:
+        """Зберегти знімок поточної версії нотатки.
+
+        Автоматичні знімки створюються не частіше ніж раз на п'ять
+        хвилин. Ручний виклик з ``force=True`` створює знімок завжди.
+        Знімок — це повна копія Markdown-файлу, тому його можна
+        переглянути навіть без Omnify.
+        """
+        source = Path(note.path) if note.path else None
+        if source is None or not source.is_file():
+            return None
+        try:
+            relative = source.relative_to(self.root)
+        except ValueError as exc:
+            raise ValueError("Note is outside notes") from exc
+        if relative.parts and relative.parts[0] in {".trash", ".history"}:
+            return None
+
+        note_id = self._safe_id(note.id)
+        if not note_id:
+            return None
+        if not force and not self._history_due(note_id):
+            return None
+        return self._write_history_snapshot(source, note_id)
+
+    def versions(self, note: Note) -> list[Note]:
+        """Повернути знімки нотатки від найновішого до найстарішого."""
+        note_id = self._safe_id(note.id)
+        folder = Path(self.history_dir / note_id) if note_id else None
+        if folder is None or not folder.is_dir():
+            return []
+
+        versions: list[Note] = []
+        for path in sorted(folder.glob("*.md"), reverse=True):
+            try:
+                version = self._read_note(path)
+            except (OSError, ValueError):
+                continue
+            version.folder = note.folder
+            version.path = path
+            versions.append(version)
+        return versions
+
+    def restore_version(self, note: Note, version: Note) -> Note:
+        """Відновити текст, назву, теги й закріплення зі знімка.
+
+        Поточна версія спочатку потрапляє в історію, тому відкат можна
+        скасувати. Картинки не дублюються: вони живуть у ``assets/<id>/``
+        і залишаються доступними, якщо файл не видаляли.
+        """
+        source = Path(version.path) if version.path else None
+        if source is None or not source.is_file():
+            raise ValueError("Version file not found")
+        try:
+            source.relative_to(self.history_dir)
+        except ValueError as exc:
+            raise ValueError("Version is not in history") from exc
+
+        restored = self._read_note(source)
+        self.create_version(note, force=True)
+        note.label = restored.label
+        note.contents = restored.contents
+        note.tags = list(restored.tags)
+        note.pinned = bool(restored.pinned)
+        self.save(note)
+        return note
+
+    def delete_version(self, version: Note) -> None:
+        """Видалити один знімок історії."""
+        source = Path(version.path) if version.path else None
+        if source is None:
+            raise ValueError("Version file not found")
+        try:
+            source.relative_to(self.history_dir)
+        except ValueError as exc:
+            raise ValueError("Version is not in history") from exc
+        try:
+            source.unlink()
+        except FileNotFoundError:
+            pass
+        self._remove_empty_folder(source.parent)
+        self._remove_empty_folder(self.history_dir)
+
+    def clear_history(self, note: Note) -> int:
+        """Видалити всю історію нотатки; повернути кількість знімків."""
+        note_id = self._safe_id(note.id)
+        folder = self.history_dir / note_id if note_id else None
+        if folder is None or not folder.is_dir():
+            return 0
+        count = len(list(folder.glob("*.md")))
+        shutil.rmtree(folder, ignore_errors=True)
+        self._remove_empty_folder(self.history_dir)
+        return count
 
     def import_markdown(self, source: Path | str, folder: str = "") -> Note:
         """Імпортувати зовнішній Markdown-файл як нову нотатку.
@@ -681,7 +796,12 @@ class NoteStore:
             self.root,
             target,
             dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(".backups", ".trash", "*.tmp"),
+            ignore=shutil.ignore_patterns(
+                ".backups",
+                ".history",
+                ".trash",
+                "*.tmp",
+            ),
         )
         return target
 
@@ -747,6 +867,92 @@ class NoteStore:
             )
 
         return imported, updated, exported
+
+    def _snapshot_before_save(self, note: Note, old_path: Path | None) -> None:
+        """Зберегти попередню версію перед перезаписом файлу."""
+        if old_path is None or not old_path.is_file():
+            return
+        try:
+            relative = old_path.relative_to(self.root)
+        except ValueError:
+            return
+        if relative.parts and relative.parts[0] in {".trash", ".history"}:
+            return
+
+        note_id = self._safe_id(note.id)
+        if not note_id or not self._history_due(note_id):
+            return
+        try:
+            previous = self._read_note(old_path)
+        except (OSError, ValueError):
+            return
+
+        previous.label = previous.label.strip() or "Untitled"
+        previous.tags = _normalise_tags(previous.tags)
+        current = (
+            note.label,
+            note.contents,
+            tuple(note.tags),
+            bool(note.pinned),
+        )
+        before = (
+            previous.label,
+            previous.contents,
+            tuple(previous.tags),
+            bool(previous.pinned),
+        )
+        if current == before:
+            return
+
+        try:
+            self._write_history_snapshot(old_path, note_id)
+        except OSError:
+            # Історія — допоміжна функція; вона не повинна заважати
+            # збереженню самої нотатки, якщо диск переповнений.
+            pass
+
+    def _history_due(self, note_id: str) -> bool:
+        """Чи минуло достатньо часу для наступного авто-знімка."""
+        folder = self.history_dir / note_id
+        if not folder.is_dir():
+            return True
+        try:
+            newest = max(
+                (path.stat().st_mtime for path in folder.glob("*.md")),
+                default=None,
+            )
+        except OSError:
+            return True
+        if newest is None:
+            return True
+        return time.time() - newest >= _HISTORY_INTERVAL_SECONDS
+
+    def _write_history_snapshot(self, source: Path, note_id: str) -> Path:
+        """Скопіювати файл нотатки в приховану теку історії."""
+        target_dir = self.history_dir / note_id
+        target_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        target = target_dir / f"{stamp}.md"
+        if target.exists():
+            target = target_dir / f"{stamp}-{uuid4().hex[:8]}.md"
+        shutil.copy2(source, target)
+        # copy2 зберігає mtime оригіналу; для інтервалу авто-знімків
+        # потрібен час створення самої версії.
+        os.utime(target)
+        self._trim_history(note_id)
+        return target
+
+    def _trim_history(self, note_id: str) -> None:
+        """Залишити лише останні ``_HISTORY_LIMIT`` знімків."""
+        folder = self.history_dir / note_id
+        if not folder.is_dir():
+            return
+        files = sorted(folder.glob("*.md"))
+        for path in files[:-_HISTORY_LIMIT]:
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
     @staticmethod
     def _copy_note(note: Note, path: Path | None = None) -> Note:
