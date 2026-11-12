@@ -3222,6 +3222,25 @@ class NotesModule(BaseModule):
             return
         self.ctx.notify(tr("Backup created: {path}", path=path))
 
+    def restore_backup_archive(self, archive_path: Path | str) -> int:
+        """Відновити архів із безпечною копією та оновити екран Notes.
+
+        Цей публічний метод використовує і діалог із меню Notes, і менеджер
+        бекапів у Settings. Перед злиттям завжди створюється страхувальна
+        копія в поточній налаштованій папці.
+        """
+        if self._store is None:
+            raise RuntimeError("Notes are not ready")
+        if self._view is not None:
+            self._sync_current_note()
+            self._save_current_note()
+        manager = self._backup_manager()
+        self._store.create_backup(manager.destination)
+        restored = self._store.restore_backup(archive_path)
+        if self._view is not None:
+            self._reload_notes_from_store(self._selected_id)
+        return restored
+
     def _on_restore_notes(self) -> None:
         """Відновити нотатки з ZIP-архіву, створивши страхувальну копію."""
         from gi.repository import Gtk
@@ -3261,14 +3280,11 @@ class NotesModule(BaseModule):
                 return
 
             try:
-                manager = self._backup_manager()
-                self._store.create_backup(manager.destination)
-                restored = self._store.restore_backup(archive_path)
+                restored = self.restore_backup_archive(archive_path)
             except Exception as exc:
                 self.ctx.notify(tr("Could not restore backup: {error}", error=exc))
                 return
 
-            self._reload_notes_from_store(self._selected_id)
             self.ctx.notify(
                 tr("Restored notes: {count}", count=restored)
             )

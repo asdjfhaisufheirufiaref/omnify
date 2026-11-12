@@ -218,15 +218,18 @@ class BackupSettingsPanel(Gtk.Box):
             self._prune_spin.set_sensitive(self._config.auto_prune)
             self._prune_combo.set_sensitive(self._config.auto_prune)
 
-            summary = self._manager().summary()
-            self._stats_label.set_text(
-                tr(
-                    "Backups: {count} · {size} · starred: {starred}",
-                    count=summary["count"],
-                    size=BackupManager.size_text(summary["bytes"]),
-                    starred=summary["starred"],
-                )
+            manager = self._manager()
+            summary = manager.summary()
+            stats = tr(
+                "Backups: {count} · {size} · starred: {starred}",
+                count=summary["count"],
+                size=BackupManager.size_text(summary["bytes"]),
+                starred=summary["starred"],
             )
+            latest = manager.latest()
+            if latest is not None:
+                stats = f"{stats} · {tr('latest: {stamp}', stamp=latest.stamp)}"
+            self._stats_label.set_text(stats)
             if summary["exceeded"]:
                 self._limit_label.set_text(
                     tr(
@@ -482,6 +485,13 @@ class BackupSettingsPanel(Gtk.Box):
                 )
                 box.append(star_button)
 
+                restore_button = Gtk.Button(label=tr("Restore"))
+                restore_button.connect(
+                    "clicked",
+                    lambda _button, item=record: self._restore_backup(item.path),
+                )
+                box.append(restore_button)
+
                 delete_button = Gtk.Button(label=tr("Delete"))
                 delete_button.get_style_context().add_class("omnify-danger")
                 delete_button.connect(
@@ -523,6 +533,33 @@ class BackupSettingsPanel(Gtk.Box):
         except Exception as exc:
             self.ctx.notify(tr("Could not update backup: {error}", error=exc))
             return
+        self.refresh()
+        refresh = getattr(self, "_manager_refresh", None)
+        if callable(refresh):
+            refresh()
+
+    def _restore_backup(self, path: Path) -> None:
+        if not self._confirm(
+            tr("Restore backup?"),
+            tr(
+                "Notes from the backup will be merged with current notes. "
+                "A safety copy will be created first."
+            ),
+            tr("Restore backup"),
+        ):
+            return
+        get_module = getattr(self.ctx, "get_module", None)
+        notes = get_module("notes") if callable(get_module) else None
+        restore = getattr(notes, "restore_backup_archive", None)
+        if not callable(restore):
+            self.ctx.notify(tr("Open Notes first to restore a backup."))
+            return
+        try:
+            restored = restore(path)
+        except Exception as exc:
+            self.ctx.notify(tr("Could not restore backup: {error}", error=exc))
+            return
+        self.ctx.notify(tr("Restored notes: {count}", count=restored))
         self.refresh()
         refresh = getattr(self, "_manager_refresh", None)
         if callable(refresh):

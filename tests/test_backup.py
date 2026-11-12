@@ -14,7 +14,9 @@ from omnify.core.backup import (
     BackupConfig,
     BackupManager,
 )
+from omnify.core.module_context import ModuleContext
 from omnify.core.storage import Storage
+from omnify.modules.notes import NotesModule
 from omnify.modules.notes_engine import Note, NoteStore
 
 
@@ -199,6 +201,30 @@ class BackupManagerTests(unittest.TestCase):
             self.assertIsNone(manager.take_limit_notice())
             self.assertEqual(config.last_limit_notice_count, 0)
             manager.delete(second)
+
+    def test_notes_module_restore_creates_safety_backup_headlessly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            storage = Storage(base / "data")
+            directory = base / "backups"
+            BackupConfig(destination=str(directory)).save(storage)
+            module = NotesModule(
+                ModuleContext(storage, get_module=lambda _module_id: None)
+            )
+            store = NoteStore(base / "notes")
+            module._store = store
+            note = Note(label="Restore me", contents="Original")
+            store.save(note)
+            archive = store.create_backup(directory)
+            note.contents = "Changed"
+            store.save(note)
+
+            restored = module.restore_backup_archive(archive)
+
+            self.assertGreaterEqual(restored, 1)
+            self.assertEqual(store.load()[0].contents, "Original")
+            manager = BackupManager(BackupConfig(destination=str(directory)))
+            self.assertEqual(len(manager.list_backups()), 2)
 
     def test_legacy_archives_are_listed_but_never_pruned(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
