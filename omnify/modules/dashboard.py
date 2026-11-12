@@ -358,7 +358,8 @@ class DashboardModule(BaseModule):
                     "{count} backups · latest {stamp}"
                 )
                 text = tr(key, count=len(records), stamp=latest.stamp)
-                if len(records) > manager.config.limit_count:
+                limit = max(0, manager.config.limit_count)
+                if limit > 0 and len(records) > limit:
                     text = f"{text} · {tr('limit exceeded')}"
         except Exception:
             text = tr("No backups yet")

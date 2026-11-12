@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **467 tests**.
+module are implemented. The full headless suite is green: **471 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -194,9 +194,9 @@ The Notes module is implemented:
   to `~/.local/share/omnify/backups/`;
 - every archive contains `omnify-backup.json`; the manager only lists strict
   `notes-YYYYMMDD-HHMMSS*.zip|backup` names and never deletes unrelated files;
-- the configured limit only produces a one-shot warning; automatic deletion
-  is opt-in, age-based (months/years), and skips starred (`_STAR.backup`) and
-  legacy archives;
+- the configured limit only produces a one-shot warning; **0 means no limit
+  and is the default**, while automatic deletion is opt-in, age-based
+  (months/years), and skips starred (`_STAR.backup`) and legacy archives;
 - **Settings → Backups** provides interval, folder, limit, cleanup policy,
   manual backup, folder opening and a manager for starring, restoring or
   deleting archives;
@@ -229,7 +229,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **467 OK**
+- `python3 -m unittest discover -s tests` → **471 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the

@@ -116,13 +116,21 @@ class BackupSettingsPanel(Gtk.Box):
         )
         limit_label.set_size_request(210, -1)
         limit_row.append(limit_label)
-        self._limit_spin = Gtk.SpinButton.new_with_range(1, 999, 1)
+        self._limit_spin = Gtk.SpinButton.new_with_range(0, 999, 1)
         self._limit_spin.connect("value-changed", self._on_limit_changed)
         limit_row.append(self._limit_spin)
         backup_word = Gtk.Label(label=tr("backups"), xalign=0.0)
         backup_word.get_style_context().add_class("omnify-dim")
         limit_row.append(backup_word)
         self.append(limit_row)
+
+        limit_hint = Gtk.Label(
+            label=tr("0 = no limit (default)"),
+            xalign=0.0,
+            wrap=True,
+        )
+        limit_hint.get_style_context().add_class("omnify-dim")
+        self.append(limit_hint)
 
         prune_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._prune_check = Gtk.CheckButton(
@@ -204,7 +212,7 @@ class BackupSettingsPanel(Gtk.Box):
                 else units.index("days")
             )
             self._destination_entry.set_text(self._config.destination)
-            self._limit_spin.set_value(max(1, self._config.limit_count))
+            self._limit_spin.set_value(max(0, self._config.limit_count))
             self._prune_check.set_active(self._config.auto_prune)
             self._prune_spin.set_value(max(1, self._config.prune_value))
             prune_units = self._prune_units()
@@ -283,7 +291,7 @@ class BackupSettingsPanel(Gtk.Box):
     def _on_limit_changed(self, _widget) -> None:
         if self._updating:
             return
-        self._config.limit_count = max(1, int(self._limit_spin.get_value()))
+        self._config.limit_count = max(0, int(self._limit_spin.get_value()))
         self._config.last_limit_notice_count = 0
         self._save()
         self.refresh()

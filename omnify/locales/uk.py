@@ -1494,6 +1494,7 @@ TRANSLATIONS = {
     "Backup folder": "Папка резервних копій",
     "Leave empty to use the default folder. The folder is never deleted by uninstall.": "Залиште порожнім, щоб використовувати типову папку. Деінсталятор ніколи її не видаляє.",
     "Warn when there are more than": "Попереджати, якщо копій більше ніж",
+    "0 = no limit (default)": "0 = без обмежень (типово)",
     "backups": "резервних копій",
     "Automatically delete backups older than": "Автоматично видаляти копії, старші за",
     "months": "місяців",

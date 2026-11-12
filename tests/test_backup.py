@@ -75,9 +75,28 @@ class BackupConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.interval_value, 1)
         self.assertEqual(config.interval_unit, "days")
-        self.assertEqual(config.limit_count, 1)
+        self.assertEqual(config.limit_count, 0)
         self.assertEqual(config.prune_unit, "years")
         self.assertEqual(config.last_limit_notice_count, 0)
+
+    def test_legacy_default_limit_is_migrated_to_unlimited(self) -> None:
+        config = BackupConfig.from_dict(
+            {"limit_count": 10, "last_limit_notice_count": 7}
+        )
+
+        self.assertEqual(config.limit_count, 0)
+        self.assertEqual(config.last_limit_notice_count, 0)
+        self.assertEqual(config.schema_version, 2)
+
+    def test_explicit_limit_survives_schema_two_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            storage = Storage(temporary)
+            BackupConfig(limit_count=10).save(storage)
+
+            loaded = BackupConfig.load(storage)
+
+            self.assertEqual(loaded.limit_count, 10)
+            self.assertEqual(loaded.schema_version, 2)
 
 
 class BackupManagerTests(unittest.TestCase):
@@ -185,6 +204,18 @@ class BackupManagerTests(unittest.TestCase):
             self.assertTrue(old_legacy.exists())
             self.assertTrue(recent.exists())
             self.assertTrue(unrelated.exists())
+
+    def test_default_policy_is_unlimited_and_does_not_warn(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "backups"
+            _write_archive(directory / "notes-20260101-000000.zip")
+            _write_archive(directory / "notes-20260102-000000.zip")
+            manager = BackupManager(BackupConfig(destination=str(directory)))
+
+            self.assertIsNone(manager.take_limit_notice())
+            summary = manager.summary()
+            self.assertEqual(summary["limit"], 0)
+            self.assertEqual(summary["exceeded"], 0)
 
     def test_limit_notice_is_sent_once_until_count_changes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

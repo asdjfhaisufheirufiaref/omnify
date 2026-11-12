@@ -73,12 +73,15 @@ class BackupConfig:
     interval_value: int = 1
     interval_unit: str = "days"
     destination: str = ""
-    limit_count: int = 10
+    # 0 means unlimited. Older builds defaulted to 10 and persisted that value;
+    # ``schema_version`` lets us migrate only that implicit default below.
+    limit_count: int = 0
     auto_prune: bool = False
     prune_value: int = 1
     prune_unit: str = "years"
     # Internal: prevents the same limit warning from appearing on every tick.
     last_limit_notice_count: int = 0
+    schema_version: int = 2
 
     @classmethod
     def from_dict(cls, raw: dict | None) -> "BackupConfig":
@@ -89,18 +92,28 @@ class BackupConfig:
         prune_unit = str(raw.get("prune_unit", "years"))
         if prune_unit not in _PRUNE_UNITS:
             prune_unit = "years"
+        limit_count = _as_int(raw.get("limit_count", 0), 0, 0)
+        schema_version = _as_int(raw.get("schema_version", 1), 2, 0)
+        last_limit_notice_count = max(
+            0, _as_int(raw.get("last_limit_notice_count", 0), 0, 0)
+        )
+        if schema_version < 2 and limit_count == 10:
+            # Version 1 wrote the old default (10) into every new config.
+            # Treat that exact value as "no limit"; a user who explicitly
+            # chose 10 will be re-marked as version 2 on the next save.
+            limit_count = 0
+            last_limit_notice_count = 0
         return cls(
             enabled=bool(raw.get("enabled", True)),
             interval_value=_as_int(raw.get("interval_value", 1), 1),
             interval_unit=interval_unit,
             destination=str(raw.get("destination", "") or ""),
-            limit_count=_as_int(raw.get("limit_count", 10), 10),
+            limit_count=limit_count,
             auto_prune=bool(raw.get("auto_prune", False)),
             prune_value=_as_int(raw.get("prune_value", 1), 1),
             prune_unit=prune_unit,
-            last_limit_notice_count=max(
-                0, _as_int(raw.get("last_limit_notice_count", 0), 0, 0)
-            ),
+            last_limit_notice_count=last_limit_notice_count,
+            schema_version=2,
         )
 
     @classmethod
@@ -291,9 +304,17 @@ class BackupManager:
 
     # -- limit notifications ------------------------------------------
     def take_limit_notice(self) -> tuple[int, int] | None:
-        """Return ``(count, limit)`` once when the configured limit is crossed."""
+        """Return ``(count, limit)`` once when the configured limit is crossed.
+
+        A limit of zero means unlimited; no notification is produced and any
+        stale one-shot marker is cleared.
+        """
+        limit = max(0, self.config.limit_count)
+        if limit <= 0:
+            if self.config.last_limit_notice_count:
+                self.config.last_limit_notice_count = 0
+            return None
         count = len(self.list_backups())
-        limit = max(1, self.config.limit_count)
         if count > limit:
             if self.config.last_limit_notice_count != count:
                 self.config.last_limit_notice_count = count
@@ -366,13 +387,14 @@ class BackupManager:
 
     def summary(self) -> dict[str, int]:
         records = self.list_backups()
+        limit = max(0, self.config.limit_count)
         return {
             "count": len(records),
             "starred": sum(1 for record in records if record.starred),
             "bytes": sum(record.size for record in records),
             "legacy": sum(1 for record in records if record.legacy),
-            "limit": max(1, self.config.limit_count),
-            "exceeded": int(len(records) > max(1, self.config.limit_count)),
+            "limit": limit,
+            "exceeded": int(limit > 0 and len(records) > limit),
         }
 
     @staticmethod

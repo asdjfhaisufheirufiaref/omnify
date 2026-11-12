@@ -41,6 +41,23 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("2 backups", text)
             self.assertIn("limit exceeded", text)
 
+    def test_backup_glance_is_unlimited_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            storage = Storage(base / "data")
+            directory = base / "backups"
+            store = NoteStore(base / "notes")
+            store.save(Note(label="Current", contents="Text"))
+            store.create_backup(directory)
+            store.create_backup(directory)
+            BackupConfig(destination=str(directory)).save(storage)
+            module = DashboardModule(ModuleContext(storage))
+
+            text = module._backup_text()
+
+            self.assertIn("2 backups", text)
+            self.assertNotIn("limit exceeded", text)
+
 
 if __name__ == "__main__":
     unittest.main()
