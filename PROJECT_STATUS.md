@@ -194,6 +194,15 @@ The Notes module is implemented:
   `tests/test_notes_render.py`;
 - registered in `omnify/modules/__init__.py`.
 
+## UI artifacts
+
+- `docs/wireframes/dashboard.svg` — dashboard layout with quick actions,
+  glance card, recent notes and module tiles;
+- `docs/wireframes/notes.svg` — note list, search, folders, tags, toolbar,
+  Markdown editor and preview;
+- `docs/wireframes/README.md` — rationale and editing notes; the SVGs can be
+  imported into Figma without adding it as a runtime dependency.
+
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`

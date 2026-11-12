@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Omnify dashboard wireframe</title>
+  <desc id="desc">Low-fidelity wireframe of the Omnify dashboard: sidebar, greeting, clock, quick actions, glance card and module tiles.</desc>
+  <defs>
+    <style>
+      .bg { fill: #15161b; }
+      .sidebar { fill: #1d1e25; }
+      .card { fill: #24262e; stroke: #343741; stroke-width: 1; }
+      .tile { fill: #22242c; stroke: #343741; stroke-width: 1; }
+      .accent { fill: #8d7cf6; }
+      .text { fill: #f0f1f7; font-family: Inter, DejaVu Sans, sans-serif; }
+      .muted { fill: #989baa; font-family: Inter, DejaVu Sans, sans-serif; }
+      .small { fill: #b8bbc8; font-family: Inter, DejaVu Sans, sans-serif; }
+      .dim { fill: #737786; font-family: Inter, DejaVu Sans, sans-serif; }
+      .nav { fill: #c0c2ce; font-family: Inter, DejaVu Sans, sans-serif; font-size: 15px; }
+      .button { fill: #2d2f39; stroke: #444754; stroke-width: 1; }
+      .pill { fill: #322d52; stroke: #675aae; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1440" height="900"/>
+  <rect class="sidebar" width="248" height="900"/>
+
+  <!-- Sidebar -->
+  <circle class="accent" cx="42" cy="46" r="15"/>
+  <text class="text" x="68" y="53" font-size="22" font-weight="700">Omnify</text>
+  <text class="dim" x="24" y="100" font-size="11" letter-spacing="1.5">WORKSPACE</text>
+
+  <rect class="pill" x="14" y="116" width="220" height="38" rx="9"/>
+  <text class="text" x="34" y="141" font-size="15" font-weight="600">Dashboard</text>
+  <text class="nav" x="34" y="191">Notes</text>
+  <text class="nav" x="34" y="231">Calendar</text>
+  <text class="nav" x="34" y="271">Timer</text>
+  <text class="nav" x="34" y="311">Stopwatch</text>
+  <text class="nav" x="34" y="351">Alarm</text>
+  <text class="nav" x="34" y="391">Calculator</text>
+  <text class="nav" x="34" y="431">Task Manager</text>
+  <text class="nav" x="34" y="471">Browser</text>
+
+  <line x1="18" y1="510" x2="230" y2="510" stroke="#353741" stroke-width="1"/>
+  <text class="dim" x="24" y="542" font-size="11" letter-spacing="1.5">SYSTEM</text>
+  <text class="nav" x="34" y="575">Settings</text>
+  <text class="nav" x="34" y="615">About</text>
+
+  <rect class="card" x="16" y="812" width="216" height="64" rx="10"/>
+  <circle cx="34" cy="844" r="5" fill="#79d7a5"/>
+  <text class="small" x="48" y="840" font-size="12">Background services</text>
+  <text class="dim" x="48" y="858" font-size="11">Timers · alarms · reminders</text>
+
+  <!-- Header -->
+  <text class="text" x="288" y="62" font-size="30" font-weight="700">Dashboard</text>
+  <text class="muted" x="288" y="88" font-size="14">Wednesday, 11 November 2026</text>
+  <text class="text" x="1190" y="64" font-size="28" font-weight="600">19:42</text>
+  <text class="dim" x="1190" y="86" font-size="12">Europe/Kyiv</text>
+
+  <!-- Hero -->
+  <rect class="card" x="288" y="118" width="1116" height="168" rx="16"/>
+  <text class="text" x="316" y="166" font-size="26" font-weight="700">Good evening</text>
+  <text class="muted" x="316" y="194" font-size="15">Everything in one place: notes, time, planning and focus.</text>
+
+  <rect class="button" x="316" y="218" width="142" height="38" rx="9"/>
+  <text class="small" x="336" y="242" font-size="13" font-weight="600">+  New note</text>
+  <rect class="button" x="470" y="218" width="164" height="38" rx="9"/>
+  <text class="small" x="490" y="242" font-size="13" font-weight="600">Today's journal</text>
+  <rect class="button" x="646" y="218" width="132" height="38" rx="9"/>
+  <text class="small" x="666" y="242" font-size="13" font-weight="600">Focus timer</text>
+
+  <rect x="1116" y="146" width="260" height="112" rx="12" fill="#1d1f28" stroke="#383b48"/>
+  <text class="dim" x="1136" y="174" font-size="11" letter-spacing="1.2">NEXT UP</text>
+  <text class="text" x="1136" y="202" font-size="16" font-weight="600">Weekly review</text>
+  <text class="muted" x="1136" y="224" font-size="12">Today · 20:00 · Calendar</text>
+  <text class="small" x="1136" y="244" font-size="12" fill="#b7a9ff">Open calendar →</text>
+
+  <!-- Glance -->
+  <rect class="card" x="288" y="310" width="350" height="292" rx="16"/>
+  <text class="text" x="316" y="346" font-size="18" font-weight="700">At a glance</text>
+  <line x1="316" y1="362" x2="610" y2="362" stroke="#353741"/>
+  <text class="muted" x="316" y="394" font-size="13">Next alarm</text>
+  <text class="small" x="500" y="394" font-size="13">07:30 · weekdays</text>
+  <text class="muted" x="316" y="432" font-size="13">Timers</text>
+  <text class="small" x="500" y="432" font-size="13">2 running</text>
+  <text class="muted" x="316" y="470" font-size="13">Stopwatch</text>
+  <text class="small" x="500" y="470" font-size="13">00:12:44</text>
+  <text class="muted" x="316" y="508" font-size="13">Browser</text>
+  <text class="small" x="500" y="508" font-size="13">3 tabs · LibreWolf</text>
+  <text class="muted" x="316" y="546" font-size="13">Notes</text>
+  <text class="small" x="500" y="546" font-size="13">24 · Weekly review</text>
+  <text class="dim" x="316" y="578" font-size="11">Live summary updates when modules change</text>
+
+  <!-- Notes recent card -->
+  <rect class="card" x="656" y="310" width="360" height="292" rx="16"/>
+  <text class="text" x="684" y="346" font-size="18" font-weight="700">Recent notes</text>
+  <text class="dim" x="916" y="346" font-size="11">OPEN NOTES →</text>
+  <line x1="684" y1="362" x2="988" y2="362" stroke="#353741"/>
+  <rect x="684" y="378" width="304" height="48" rx="8" fill="#20222a"/>
+  <text class="text" x="698" y="399" font-size="13" font-weight="600">Weekly review</text>
+  <text class="dim" x="698" y="415" font-size="11">Journal · edited 12 min ago</text>
+  <rect x="684" y="434" width="304" height="48" rx="8" fill="#20222a"/>
+  <text class="text" x="698" y="455" font-size="13" font-weight="600">Project ideas</text>
+  <text class="dim" x="698" y="471" font-size="11">Work · edited yesterday</text>
+  <rect x="684" y="490" width="304" height="48" rx="8" fill="#20222a"/>
+  <text class="text" x="698" y="511" font-size="13" font-weight="600">Shopping list</text>
+  <text class="dim" x="698" y="527" font-size="11">Personal · edited 2 days ago</text>
+  <text class="dim" x="684" y="570" font-size="11">Pinned notes stay at the top of the list</text>
+
+  <!-- Habit / calendar card -->
+  <rect class="card" x="1036" y="310" width="368" height="292" rx="16"/>
+  <text class="text" x="1064" y="346" font-size="18" font-weight="700">Today</text>
+  <text class="dim" x="1064" y="370" font-size="12">Calendar and habits</text>
+  <line x1="1064" y1="384" x2="1376" y2="384" stroke="#353741"/>
+  <text class="small" x="1064" y="414" font-size="13" font-weight="600">09:00  Stand-up</text>
+  <text class="dim" x="1064" y="432" font-size="11">Work · 15 min</text>
+  <text class="small" x="1064" y="466" font-size="13" font-weight="600">14:00  Study block</text>
+  <text class="dim" x="1064" y="484" font-size="11">Study · 90 min</text>
+  <text class="small" x="1064" y="518" font-size="13" font-weight="600">20:00  Weekly review</text>
+  <text class="dim" x="1064" y="536" font-size="11">Personal · 30 min</text>
+  <rect x="1064" y="556" width="308" height="28" rx="6" fill="#20262a" stroke="#384744"/>
+  <text class="small" x="1078" y="575" font-size="12">Habit streak: 6 days · keep going</text>
+
+  <!-- Module tiles -->
+  <text class="text" x="288" y="650" font-size="20" font-weight="700">Tools</text>
+  <text class="muted" x="348" y="650" font-size="12">All modules</text>
+
+  <rect class="tile" x="288" y="674" width="252" height="84" rx="12"/>
+  <text class="text" x="306" y="704" font-size="15" font-weight="600">Notes</text>
+  <text class="dim" x="306" y="728" font-size="11">Markdown · tags · history</text>
+
+  <rect class="tile" x="558" y="674" width="252" height="84" rx="12"/>
+  <text class="text" x="576" y="704" font-size="15" font-weight="600">Calendar</text>
+  <text class="dim" x="576" y="728" font-size="11">Events · reminders · habits</text>
+
+  <rect class="tile" x="828" y="674" width="252" height="84" rx="12"/>
+  <text class="text" x="846" y="704" font-size="15" font-weight="600">Timer</text>
+  <text class="dim" x="846" y="728" font-size="11">Presets · background</text>
+
+  <rect class="tile" x="1098" y="674" width="306" height="84" rx="12"/>
+  <text class="text" x="1116" y="704" font-size="15" font-weight="600">Calculator</text>
+  <text class="dim" x="1116" y="728" font-size="11">Exact math · matrices · graphs</text>
+
+  <rect class="tile" x="288" y="770" width="252" height="84" rx="12"/>
+  <text class="text" x="306" y="800" font-size="15" font-weight="600">Task Manager</text>
+  <text class="dim" x="306" y="824" font-size="11">Processes · performance</text>
+
+  <rect class="tile" x="558" y="770" width="252" height="84" rx="12"/>
+  <text class="text" x="576" y="800" font-size="15" font-weight="600">Browser</text>
+  <text class="dim" x="576" y="824" font-size="11">Managed · Tor support</text>
+
+  <rect class="tile" x="828" y="770" width="252" height="84" rx="12"/>
+  <text class="text" x="846" y="800" font-size="15" font-weight="600">Alarm</text>
+  <text class="dim" x="846" y="824" font-size="11">Repeats · snooze</text>
+
+  <rect class="tile" x="1098" y="770" width="306" height="84" rx="12"/>
+  <text class="text" x="1116" y="800" font-size="15" font-weight="600">Settings</text>
+  <text class="dim" x="1116" y="824" font-size="11">Theme · language · layout</text>
+
+  <text class="dim" x="288" y="884" font-size="10">Omnify wireframe · dashboard · layout follows the running GTK prototype</text>
+</svg>
