@@ -360,6 +360,29 @@ class BackupSettingsPanel(Gtk.Box):
             return
         self.ctx.notify(tr("Backup created: {path}", path=path))
 
+    def _check_backups(self, _button=None) -> None:
+        manager = self._manager()
+        records = manager.list_backups()
+        if not records:
+            self.ctx.notify(tr("No backups to check"))
+            return
+        damaged: list[str] = []
+        for record in records:
+            valid, _reason = manager.verify(record.path)
+            if not valid:
+                damaged.append(record.name)
+        if damaged:
+            self.ctx.notify(
+                tr(
+                    "Backup check: {valid}/{total} valid. Damaged: {names}",
+                    valid=len(records) - len(damaged),
+                    total=len(records),
+                    names=", ".join(damaged),
+                )
+            )
+        else:
+            self.ctx.notify(tr("All {count} backups are valid", count=len(records)))
+
     def _on_open_folder(self, _button) -> None:
         try:
             directory = self._config.destination_path()
@@ -437,6 +460,9 @@ class BackupSettingsPanel(Gtk.Box):
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         create_button = Gtk.Button(label=tr("Backup now"))
         actions.append(create_button)
+        check_button = Gtk.Button(label=tr("Check integrity"))
+        check_button.connect("clicked", self._check_backups)
+        actions.append(check_button)
         open_button = Gtk.Button(label=tr("Open backup folder"))
         open_button.connect("clicked", self._on_open_folder)
         actions.append(open_button)

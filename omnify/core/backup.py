@@ -18,6 +18,7 @@ Safety contract:
 from __future__ import annotations
 
 import calendar
+import json
 import os
 import re
 import zipfile
@@ -291,6 +292,39 @@ class BackupManager:
     def latest(self) -> BackupRecord | None:
         records = self.list_backups()
         return records[0] if records else None
+
+    def verify(self, path: Path | str) -> tuple[bool, str]:
+        """Check one archive's ZIP structure and Omnify manifest.
+
+        The manager's manual check is deliberately stricter than discovery:
+        a damaged ZIP, a malformed manifest or an unsafe member path is
+        reported instead of being treated as a valid backup.
+        """
+        candidate = Path(path)
+        if not candidate.is_file() or BACKUP_PATTERN.match(candidate.name) is None:
+            return False, "not an Omnify backup"
+        try:
+            with zipfile.ZipFile(candidate, "r") as archive:
+                if archive.testzip() is not None:
+                    return False, "ZIP checksum mismatch"
+                names = archive.namelist()
+                for name in names:
+                    member = Path(name)
+                    if member.is_absolute() or ".." in member.parts:
+                        return False, "unsafe member path"
+                if MANIFEST_NAME in names:
+                    try:
+                        manifest = json.loads(archive.read(MANIFEST_NAME))
+                    except (KeyError, ValueError):
+                        return False, "invalid manifest"
+                    if not isinstance(manifest, dict) or manifest.get("app") != "omnify":
+                        return False, "not an Omnify manifest"
+                    return True, ""
+                if any(Path(name).suffix.lower() == ".md" for name in names):
+                    return True, ""
+                return False, "no notes in archive"
+        except (OSError, RuntimeError, zipfile.BadZipFile):
+            return False, "unreadable ZIP"
 
     def is_due(self, now: datetime | None = None) -> bool:
         """Whether a new automatic backup should be created now."""

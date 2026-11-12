@@ -205,6 +205,36 @@ class BackupManagerTests(unittest.TestCase):
             self.assertTrue(recent.exists())
             self.assertTrue(unrelated.exists())
 
+    def test_verify_accepts_managed_and_legacy_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "backups"
+            managed = _write_archive(directory / "notes-20260101-000000.zip")
+            legacy = _write_archive(
+                directory / "notes-20260102-000000.zip", manifest=False
+            )
+            manager = BackupManager(BackupConfig(destination=str(directory)))
+
+            self.assertEqual(manager.verify(managed), (True, ""))
+            self.assertEqual(manager.verify(legacy), (True, ""))
+
+    def test_verify_reports_corrupt_and_unsafe_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "backups"
+            directory.mkdir()
+            corrupt = directory / "notes-20260101-000000.zip"
+            corrupt.write_bytes(b"not a zip")
+            unsafe = directory / "notes-20260102-000000.zip"
+            with zipfile.ZipFile(unsafe, "w") as archive:
+                archive.writestr(
+                    MANIFEST_NAME,
+                    json.dumps({"app": "omnify", "kind": "notes"}),
+                )
+                archive.writestr("../escape.md", "# nope")
+            manager = BackupManager(BackupConfig(destination=str(directory)))
+
+            self.assertEqual(manager.verify(corrupt), (False, "unreadable ZIP"))
+            self.assertEqual(manager.verify(unsafe), (False, "unsafe member path"))
+
     def test_default_policy_is_unlimited_and_does_not_warn(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "backups"
