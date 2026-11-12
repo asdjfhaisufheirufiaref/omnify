@@ -840,6 +840,25 @@ button.dashboard-tile:hover {
 }
 .dashboard-tile-icon { font-size: 1.65em; }
 .dashboard-tile-title { font-size: 1.08em; font-weight: 650; }
+.dashboard-link {
+    background: transparent;
+    border: 0;
+    padding: 2px 4px;
+    color: var(--omnify-accent);
+    font-weight: 600;
+}
+button.dashboard-recent {
+    background: var(--omnify-bg-alt);
+    border: 1px solid var(--omnify-border);
+    border-radius: 9px;
+    padding: 8px 10px;
+    text-align: left;
+}
+button.dashboard-recent:hover {
+    background: var(--omnify-bg-hover);
+    border-color: var(--omnify-accent);
+}
+.dashboard-recent-title { font-weight: 600; }
 
 /* Calculator: display, keypad, history and graph */
 .calc-root { padding: 2px; }

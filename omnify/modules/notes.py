@@ -1223,6 +1223,36 @@ class NotesModule(BaseModule):
             return 0, ""
         return len(notes), notes[0].label
 
+    def recent_notes(self, limit: int = 4) -> list[tuple[str, str, str]]:
+        """Повернути ``(id, назва, папка)`` останніх нотаток.
+
+        Це публічний, безпечний для GTK-незалежних тестів API, який
+        використовує Dashboard для своєї картки «Recent notes».
+        """
+        notes = getattr(self, "_notes", [])
+        if not isinstance(notes, list):
+            return []
+        limit = max(0, int(limit))
+        return [(note.id, note.label, note.folder) for note in notes[:limit]]
+
+    def open_note(self, note_id: str) -> bool:
+        """Відкрити нотатку за id, скинувши фільтри Dashboard-переходу."""
+        note = getattr(self, "_notes_by_id", {}).get(note_id)
+        if note is None or self._current_note is note:
+            return note is not None
+        self._sync_current_note()
+        self._save_current_note()
+        if self._search_query:
+            self._search_entry.set_text("")
+        self._folder_filter = _ALL_NOTES
+        self._refresh_folder_button()
+        self._refresh_folder_popover()
+        self._refresh_visibility()
+        self._show_note(note)
+        self._save_selected_id()
+        self._schedule_save()
+        return True
+
     def _on_open_journal(self, _button=None) -> None:
         """Відкрити або створити щоденну нотатку на сьогодні."""
         self._sync_current_note()

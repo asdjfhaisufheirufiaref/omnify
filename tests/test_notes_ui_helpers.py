@@ -40,6 +40,19 @@ class NotesUiHelperTests(unittest.TestCase):
         module._notes = [Note(label="Latest"), Note(label="Older")]
         self.assertEqual(module.summary(), (2, "Latest"))
 
+    def test_recent_notes_returns_bounded_preview_rows(self) -> None:
+        module = NotesModule.__new__(NotesModule)
+        self.assertEqual(module.recent_notes(), [])
+        module._notes = [
+            Note(id="one", label="Latest", folder="Work"),
+            Note(id="two", label="Older", folder=""),
+        ]
+        self.assertEqual(
+            module.recent_notes(1),
+            [("one", "Latest", "Work")],
+        )
+        self.assertEqual(module.recent_notes(0), [])
+
     def test_find_next_offset_is_case_insensitive_and_wraps(self) -> None:
         text = "Alpha beta ALPHA"
         self.assertEqual(NotesModule._find_next_offset(text, "alpha", 0), 0)

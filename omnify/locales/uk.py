@@ -934,6 +934,8 @@ TRANSLATIONS = {
     "Today's calendar": "Календар на сьогодні",
     "New timer": "Новий таймер",
     "At a glance": "Коротко",
+    "Recent notes": "Останні нотатки",
+    "Open Notes": "Відкрити нотатки",
     "Next alarm": "Наступний будильник",
     "Timers": "Таймери",
     "Stopwatch": "Секундомір",

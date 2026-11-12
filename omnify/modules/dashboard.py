@@ -120,7 +120,14 @@ class DashboardModule(BaseModule):
             quick.append(button)
         root.append(quick)
 
-        root.append(self._build_glance(Gtk))
+        middle = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        glance = self._build_glance(Gtk)
+        glance.set_hexpand(True)
+        middle.append(glance)
+        recent = self._build_recent(Gtk)
+        recent.set_hexpand(True)
+        middle.append(recent)
+        root.append(middle)
         root.append(self._build_tools(Gtk))
 
         tip = Gtk.Label(
@@ -133,6 +140,7 @@ class DashboardModule(BaseModule):
 
         self._refresh_clock()
         self._refresh_glance()
+        self._refresh_recent_notes()
         return root
 
     def _open_journal(self) -> None:
@@ -163,6 +171,57 @@ class DashboardModule(BaseModule):
         text = tr("{count} notes", count=count)
         return f"{text} · {title}" if title else text
 
+    def _open_recent_note(self, note_id: str) -> None:
+        """Switch to Notes and focus the selected recent note."""
+        self.ctx.open_module("notes")
+        module = self._module("notes")
+        opener = getattr(module, "open_note", None)
+        if callable(opener):
+            opener(note_id)
+
+    def _refresh_recent_notes(self) -> None:
+        if not hasattr(self, "_recent_list"):
+            return
+        from gi.repository import Gtk
+        child = self._recent_list.get_first_child()
+        while child is not None:
+            self._recent_list.remove(child)
+            child = self._recent_list.get_first_child()
+
+        module = self._module("notes")
+        getter = getattr(module, "recent_notes", None)
+        items = getter(4) if callable(getter) else []
+        if not items:
+            empty = Gtk.Label(label=tr("No notes yet"), xalign=0.0)
+            empty.get_style_context().add_class("omnify-dim")
+            self._recent_list.append(empty)
+            return
+
+        for note_id, label, folder in items:
+            button = Gtk.Button()
+            button.get_style_context().add_class("dashboard-recent")
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            text.set_hexpand(True)
+            title = Gtk.Label(label=label or "Untitled", xalign=0.0)
+            title.set_ellipsize(3)
+            title.set_max_width_chars(34)
+            title.get_style_context().add_class("dashboard-recent-title")
+            text.append(title)
+            meta = Gtk.Label(label=folder or tr("Unfiled"), xalign=0.0)
+            meta.get_style_context().add_class("omnify-dim")
+            text.append(meta)
+            row.append(text)
+            arrow = Gtk.Label(label="›", xalign=1.0)
+            arrow.get_style_context().add_class("omnify-dim")
+            row.append(arrow)
+            button.set_child(row)
+            button.connect(
+                "clicked",
+                lambda _button, target=note_id: self._open_recent_note(target),
+            )
+            self._recent_list.append(button)
+
     def _build_glance(self, Gtk) -> Any:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         card.get_style_context().add_class("omnify-card")
@@ -190,6 +249,25 @@ class DashboardModule(BaseModule):
             row.append(value)
             self._glance_values[key] = value
             card.append(row)
+        return card
+
+    def _build_recent(self, Gtk) -> Any:
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        card.get_style_context().add_class("omnify-card")
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        title = Gtk.Label(label=tr("Recent notes"), xalign=0.0)
+        title.get_style_context().add_class("omnify-card-title")
+        title.set_hexpand(True)
+        header.append(title)
+        open_button = Gtk.Button(label=tr("Open Notes"))
+        open_button.get_style_context().add_class("dashboard-link")
+        open_button.connect(
+            "clicked", lambda _button: self.ctx.open_module("notes")
+        )
+        header.append(open_button)
+        card.append(header)
+        self._recent_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        card.append(self._recent_list)
         return card
 
     def _build_tools(self, Gtk) -> Any:
@@ -388,6 +466,7 @@ class DashboardModule(BaseModule):
         self._backup_cache_at = 0.0
         self._refresh_clock()
         self._refresh_glance()
+        self._refresh_recent_notes()
 
     def retranslate(self) -> None:
         super().retranslate()
@@ -395,3 +474,4 @@ class DashboardModule(BaseModule):
         self._backup_cache_at = 0.0
         self._refresh_clock()
         self._refresh_glance()
+        self._refresh_recent_notes()
