@@ -73,7 +73,12 @@ import sys
 from pathlib import Path
 
 data = Path(sys.argv[1]).expanduser()
-paths = [data / "backups"]
+paths = [
+    data / "backups",
+    # Older releases resolved this path directly, even when XDG_DATA_HOME
+    # was set. Protect it as well so an upgrade cannot strand archives.
+    Path.home() / ".local" / "share" / "omnify" / "backups",
+]
 env_path = sys.argv[2].strip()
 if env_path:
     paths.append(Path(env_path).expanduser())

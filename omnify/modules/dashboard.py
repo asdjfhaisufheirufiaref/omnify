@@ -8,8 +8,10 @@ persistent state and never imports GTK at module level.
 from __future__ import annotations
 
 import datetime as _dt
+import time
 from typing import Any, Dict, Optional, Tuple
 
+from ..core.backup import BackupConfig, BackupManager
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from .alarm import AlarmModule
@@ -49,6 +51,8 @@ class DashboardModule(BaseModule):
         self._browser_info = detect_browser()
         self._greeting_cache = ""
         self._status_values: Dict[str, Any] = {}
+        self._backup_cache_at = 0.0
+        self._backup_cache_text = ""
 
     # ------------------------------------------------------------------
     # View
@@ -173,6 +177,7 @@ class DashboardModule(BaseModule):
             ("stopwatch", "Stopwatch"),
             ("browser", "Browser"),
             ("notes", "Notes"),
+            ("backups", "Backups"),
         ):
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
             name = Gtk.Label(label=label, xalign=0.0)
@@ -337,6 +342,30 @@ class DashboardModule(BaseModule):
             return tr("Zen Browser detected")
         return tr("Firefox fallback")
 
+    def _backup_text(self) -> str:
+        """Short backup status, cached because the dashboard ticks often."""
+        now = time.monotonic()
+        if now - self._backup_cache_at < 60 and self._backup_cache_text:
+            return self._backup_cache_text
+        try:
+            manager = BackupManager(BackupConfig.load(self.ctx.storage))
+            records = manager.list_backups()
+            if not records:
+                text = tr("No backups yet")
+            else:
+                latest = records[0]
+                key = "{count} backup · latest {stamp}" if len(records) == 1 else (
+                    "{count} backups · latest {stamp}"
+                )
+                text = tr(key, count=len(records), stamp=latest.stamp)
+                if len(records) > manager.config.limit_count:
+                    text = f"{text} · {tr('limit exceeded')}"
+        except Exception:
+            text = tr("No backups yet")
+        self._backup_cache_text = text
+        self._backup_cache_at = now
+        return text
+
     def _refresh_glance(self) -> None:
         if not hasattr(self, "_glance_values"):
             return
@@ -345,6 +374,7 @@ class DashboardModule(BaseModule):
         self._glance_values["stopwatch"].set_text(self._stopwatch_text())
         self._glance_values["browser"].set_text(self._browser_text())
         self._glance_values["notes"].set_text(self._notes_text())
+        self._glance_values["backups"].set_text(self._backup_text())
 
     # ------------------------------------------------------------------
     # BaseModule hooks
@@ -354,11 +384,13 @@ class DashboardModule(BaseModule):
         self._refresh_glance()
 
     def on_show(self) -> None:
+        self._backup_cache_at = 0.0
         self._refresh_clock()
         self._refresh_glance()
 
     def retranslate(self) -> None:
         super().retranslate()
         self._greeting_cache = ""
+        self._backup_cache_at = 0.0
         self._refresh_clock()
         self._refresh_glance()

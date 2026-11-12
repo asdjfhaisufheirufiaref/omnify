@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **466 tests**.
+module are implemented. The full headless suite is green: **467 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -51,7 +51,8 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
 ## Features
 
 - **Dashboard** — greeting, clock, quick actions (new note and today's
-  journal), a Notes summary row, background status and module tiles.
+  journal), Notes and backup summary rows, background status and module
+  tiles.
 - **Calculator** — scientific, exact/complex arithmetic, matrices,
   calculus, units, history, graphing.
 - **Calendar** — week/day/month, events, layers, recurrence, reminders,
@@ -228,7 +229,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **466 OK**
+- `python3 -m unittest discover -s tests` → **467 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the

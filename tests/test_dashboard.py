@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from omnify.modules.dashboard import TOOL_MODULES
+from omnify.core.backup import BackupConfig
+from omnify.core.module_context import ModuleContext
+from omnify.core.storage import Storage
+from omnify.modules.dashboard import DashboardModule, TOOL_MODULES
+from omnify.modules.notes_engine import Note, NoteStore
 
 
 class DashboardTests(unittest.TestCase):
@@ -17,6 +23,23 @@ class DashboardTests(unittest.TestCase):
         notes = next(module for module in TOOL_MODULES if module.id == "notes")
         self.assertTrue(notes.name)
         self.assertTrue(notes.description)
+
+    def test_backup_glance_shows_count_and_limit_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            storage = Storage(base / "data")
+            directory = base / "backups"
+            BackupConfig(destination=str(directory), limit_count=1).save(storage)
+            store = NoteStore(base / "notes")
+            store.save(Note(label="Current", contents="Text"))
+            store.create_backup(directory)
+            store.create_backup(directory)
+            module = DashboardModule(ModuleContext(storage))
+
+            text = module._backup_text()
+
+            self.assertIn("2 backups", text)
+            self.assertIn("limit exceeded", text)
 
 
 if __name__ == "__main__":
