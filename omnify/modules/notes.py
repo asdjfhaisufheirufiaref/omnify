@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import re
 import tempfile
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..core.backup import BackupConfig, BackupManager
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
-from .notes_engine import Note, NoteStore, default_backup_dir
+from .notes_engine import Note, NoteStore
 from .notes_preview import build_preview
 from .notes_render import export_bundle_html, export_html, export_pdf
 
@@ -104,6 +104,9 @@ class NotesModule(BaseModule):
 
         # Ідентифікатор таймера GLib, який відкладає збереження.
         self._save_timer = None
+
+        # Таймер періодичної перевірки політики резервних копій.
+        self._backup_timer = None
 
         # Сховище файлів нотаток. Створюється в _load_notes().
         self._store: NoteStore | None = None
@@ -466,9 +469,12 @@ class NotesModule(BaseModule):
         title_entry.connect("changed", self._on_title_changed)
         body.get_buffer().connect("changed", self._on_body_changed)
 
-        # Періодично створюємо резервну копію. Перевірка швидка: якщо
-        # свіжий архів уже є, нічого не копіюємо.
+        # Періодично створюємо резервну копію згідно з політикою в
+        # Settings. Перевірка дешева, тому її можна робити щохвилини.
         self._maybe_auto_backup()
+        from gi.repository import GLib
+
+        self._backup_timer = GLib.timeout_add_seconds(60, self._backup_tick)
 
         return root
 
@@ -794,6 +800,10 @@ class NotesModule(BaseModule):
 
         self._sync_current_note()
         self._save_current_note()
+
+    def on_show(self) -> None:
+        """Оновити політику бекапів одразу після повернення в Notes."""
+        self._maybe_auto_backup()
 
     def on_hide(self) -> None:
         """Викликається, коли користувач переходить в інший модуль."""
@@ -3176,13 +3186,37 @@ class NotesModule(BaseModule):
         self._export_all_dialog = dialog
         dialog.show()
 
+    def _backup_manager(self) -> BackupManager:
+        """Повернути менеджер із поточною політикою з Settings."""
+        return BackupManager(BackupConfig.load(self.ctx.storage))
+
+    def _notify_backup_maintenance(self, manager: BackupManager) -> None:
+        """Застосувати автоочищення та одноразове попередження про ліміт."""
+        removed, notice = manager.maintain()
+        manager.config.save(self.ctx.storage)
+        if removed:
+            self.ctx.notify(
+                tr("Removed old backups automatically: {count}", count=removed)
+            )
+        if notice is not None:
+            count, limit = notice
+            self.ctx.notify(
+                tr(
+                    "Backup limit exceeded: {count}/{limit}. Delete old backups manually or enable automatic cleanup.",
+                    count=count,
+                    limit=limit,
+                )
+            )
+
     def _on_backup_notes(self) -> None:
         """Створити ZIP-архів усіх нотаток."""
         if self._store is None:
             return
         self._sync_current_note()
+        manager = self._backup_manager()
         try:
-            path = self._store.create_backup()
+            path = self._store.create_backup(manager.destination)
+            self._notify_backup_maintenance(manager)
         except Exception as exc:
             self.ctx.notify(tr("Could not create backup: {error}", error=exc))
             return
@@ -3206,6 +3240,7 @@ class NotesModule(BaseModule):
         archive_filter.set_name(tr("ZIP archives"))
         archive_filter.add_mime_type("application/zip")
         archive_filter.add_pattern("*.zip")
+        archive_filter.add_pattern("*.backup")
         dialog.add_filter(archive_filter)
 
         def on_response(native, response):
@@ -3226,7 +3261,8 @@ class NotesModule(BaseModule):
                 return
 
             try:
-                self._store.create_backup()
+                manager = self._backup_manager()
+                self._store.create_backup(manager.destination)
                 restored = self._store.restore_backup(archive_path)
             except Exception as exc:
                 self.ctx.notify(tr("Could not restore backup: {error}", error=exc))
@@ -3309,7 +3345,8 @@ class NotesModule(BaseModule):
             try:
                 # Перед об'єднанням створюємо страхувальну копію. Якщо її
                 # не вдалося зробити, краще не ризикувати даними.
-                self._store.create_backup(default_backup_dir())
+                manager = self._backup_manager()
+                self._store.create_backup(manager.destination)
                 imported, updated, exported = self._store.sync_two_way(target)
             except Exception as exc:
                 self.ctx.notify(tr("Could not sync notes: {error}", error=exc))
@@ -3328,24 +3365,30 @@ class NotesModule(BaseModule):
         self._sync_dialog = dialog
         dialog.show()
 
-    def _maybe_auto_backup(self) -> None:
-        """Створити резервну копію, якщо свіжої ще немає.
+    def _backup_tick(self) -> bool:
+        """Щохвилинна перевірка інтервалу та політики збереження бекапів."""
+        self._maybe_auto_backup()
+        return True
 
-        Це захищає від випадкового видалення файлів. Автоматичні копії
-        лежать поза текою notes, тому не заважають списку нотаток.
+    def _maybe_auto_backup(self) -> None:
+        """Створити резервну копію згідно з налаштованим інтервалом.
+
+        Політика (інтервал, ліміт, папка, автоочищення) зберігається в
+        Settings і читається щоразу, тому зміни застосовуються без
+        перезапуску. Автоматичні копії лежать поза текою notes.
         """
         if self._store is None:
             return
         try:
-            backup_dir = default_backup_dir()
-            backups = sorted(backup_dir.glob("notes-*.zip"))
-            if backups:
-                newest = max(path.stat().st_mtime for path in backups)
-                if time.time() - newest < 24 * 60 * 60:
-                    return
-            self._store.create_backup(backup_dir)
+            config = BackupConfig.load(self.ctx.storage)
+            if not config.enabled:
+                return
+            manager = BackupManager(config)
+            if manager.is_due():
+                self._store.create_backup(manager.destination)
+            self._notify_backup_maintenance(manager)
         except Exception:
-            # Автоматична копія не повинна заважати запуску застосунку.
+            # Автоматична копія не повинна заважати роботі застосунку.
             pass
 
     def _on_delete_note_clicked(self) -> None:

@@ -12,6 +12,12 @@ live in :mod:`omnify.app`, and the individual tools live in
 :mod:`omnify.modules`.
 """
 
+from .backup import (
+    BackupConfig,
+    BackupManager,
+    BackupRecord,
+    default_backup_dir,
+)
 from .storage import Storage, default_data_dir
 from .theme import Theme
 from .module_context import ModuleContext, BaseModule, Settings
@@ -19,6 +25,10 @@ from .module_context import ModuleContext, BaseModule, Settings
 __all__ = [
     "Storage",
     "default_data_dir",
+    "BackupConfig",
+    "BackupManager",
+    "BackupRecord",
+    "default_backup_dir",
     "Theme",
     "ModuleContext",
     "BaseModule",

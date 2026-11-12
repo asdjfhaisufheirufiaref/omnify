@@ -1,6 +1,6 @@
 # Omnify — v1 status and Notes handoff
 
-Updated: 2026-11-11. This file is the handoff source of truth for the
+Updated: 2026-11-12. This file is the handoff source of truth for the
 next session. The student report for practical works is in
 `ПРАКТИЧНІ_РОБОТИ.md`; the public-facing project guide is `README.md`.
 
@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **453 tests**.
+module are implemented. The full headless suite is green: **465 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -23,6 +23,8 @@ or mail.
 cd /home/sillycat/projects/omnify
 python3 -m omnify             # run from the project
 ./install.sh                  # install/update launchers and app-menu entries
+./uninstall.sh --dry-run      # inspect the cleanup plan
+./uninstall.sh                # remove the app and data; backups are preserved
 ```
 
 Installed commands:
@@ -38,6 +40,13 @@ Installed module ids: `dashboard`, `calculator`, `browser`, `calendar`,
 Desktop entries are installed under `~/.local/share/applications/`,
 including one entry per module. Autostart resumes timers/stopwatch after
 login.
+
+`uninstall.sh` removes launchers, desktop entries, autostart, icon, the
+package symlink, settings, cache, browser profile and project notes by
+default. `--keep-data` preserves user data, and `--remove-project` also
+removes the checkout. It resolves the default, `OMNIFY_BACKUP_DIR` and
+`backup.json` destinations before deleting anything and preserves all of
+them. The script and its integration tests are in `tests/test_uninstall.py`.
 
 ## Features
 
@@ -55,7 +64,7 @@ login.
   details and safe kill flows.
 - **Settings** — EN↔UA switching (English default), theme mode, six
   accents, custom colours, fonts, radius, background image, sidebar
-  side/width, theme import/export and data reset.
+  side/width, theme import/export, backup policy/management and data reset.
 
 The default look includes the preferred **left sidebar** and subtle
 accent circles drawn by the theme itself (no image file required).
@@ -113,8 +122,9 @@ importer for the complete transfer.
 ## Architecture constraints
 
 - Python 3.14 + `gi`/GTK 4; standard library only, no pip packages.
-- Only `omnify/app/shell.py` imports `gi` at module level (pinned GTK/GDK).
-  Modules import GTK lazily inside functions and are headless-safe.
+- Only `omnify/app/shell.py` and `omnify/app/backup_ui.py` import `gi` at
+  module level (pinned GTK/GDK). Tool modules import GTK lazily inside
+  functions and are headless-safe.
 - Pure models hold testable behaviour in `tests/`; GTK views stay thin.
 - Theme colours come from `omnify/core/theme.py`; widgets do not hard-code
   colours. Degrade gracefully when optional system tools are absent.
@@ -178,8 +188,16 @@ The Notes module is implemented:
 - local images are rendered inline in the editor; the Markdown link is
   reconstructed when the note is saved;
 - Ctrl+V inserts a clipboard image when it contains PNG/JPEG/WebP data;
-- ZIP backups can be created manually or automatically once per day; backups
-  are kept under `~/.local/share/omnify/backups/` (last 10 retained);
+- ZIP backups can be created manually or on a configurable interval
+  (minutes/hours/days/weeks); the destination is configurable and defaults
+  to `~/.local/share/omnify/backups/`;
+- every archive contains `omnify-backup.json`; the manager only lists strict
+  `notes-YYYYMMDD-HHMMSS*.zip|backup` names and never deletes unrelated files;
+- the configured limit only produces a one-shot warning; automatic deletion
+  is opt-in, age-based (months/years), and skips starred (`_STAR.backup`) and
+  legacy archives;
+- **Settings → Backups** provides interval, folder, limit, cleanup policy,
+  manual backup, folder opening and a manager for starring/deleting archives;
 - **Sync notes to folder…** copies the notes tree one-way to a folder chosen
   by the user (for example a Syncthing/Dropbox folder);
 - **Two-way sync with folder…** merges notes by stable id and lets the newer
@@ -201,13 +219,17 @@ The Notes module is implemented:
 - `docs/wireframes/notes.svg` — note list, search, folders, tags, toolbar,
   Markdown editor and preview;
 - `docs/wireframes/README.md` — rationale and editing notes; the SVGs can be
-  imported into Figma without adding it as a runtime dependency.
+  imported into Figma without adding it as a runtime dependency;
+- `omnify/app/backup_ui.py` — Settings → Backups and the archive manager;
+- `omnify/core/backup.py` — backup config, naming, star protection, safe
+  pruning and limit notifications.
 
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **453 OK**
+- `python3 -m unittest discover -s tests` → **465 OK**
 - `./install.sh` → launchers + app-menu entries created
+- `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance
 - `omnify-browser` opens LibreWolf maximized; Tor entry opens Tor Browser

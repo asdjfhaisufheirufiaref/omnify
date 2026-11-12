@@ -46,6 +46,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from ..core.backup import MANIFEST_NAME, default_backup_dir
+
 # Цей рядок відділяє службовий блок front matter від тексту нотатки.
 _FRONTMATTER_END = "\n---\n"
 
@@ -78,14 +80,6 @@ def default_notes_dir() -> Path:
     # notes_engine.py лежить у .../omnify/omnify/modules/notes_engine.py,
     # тому parents[2] — це корінь усього проєкту.
     return Path(__file__).resolve().parents[2] / "notes"
-
-
-def default_backup_dir() -> Path:
-    """Повернути папку для автоматичних ZIP-резервних копій."""
-    env = os.environ.get("OMNIFY_BACKUP_DIR")
-    if env:
-        return Path(env).expanduser()
-    return Path.home() / ".local" / "share" / "omnify" / "backups"
 
 
 def _normalise_tags(values) -> list[str]:
@@ -825,8 +819,10 @@ class NoteStore:
         """Створити ZIP-архів усіх нотаток і картинок.
 
         Якщо ``backup_dir`` не передано, архів лежить у
-        ``~/.local/share/omnify/backups``. Старі архіви (понад 10)
-        автоматично видаляються.
+        ``~/.local/share/omnify/backups``. Політика зберігання (ліміт,
+        зірки, автоматичне прибирання старих копій) живе в
+        :class:`omnify.core.backup.BackupManager`; цей метод лише створює
+        архів і додає манифест, за яким Omnify впізнає свої файли.
         """
         destination_dir = (
             Path(backup_dir).expanduser() if backup_dir else default_backup_dir()
@@ -836,6 +832,14 @@ class NoteStore:
 
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         target = destination_dir / f"notes-{stamp}.zip"
+        counter = 1
+        # Два ручні бекапи в одну секунду не повинні перезаписувати один
+        # одного. Додаємо суфікс, який BackupManager теж розуміє.
+        while target.exists() or target.with_name(
+            f"{target.stem}_STAR.backup"
+        ).exists():
+            target = destination_dir / f"notes-{stamp}-{counter}.zip"
+            counter += 1
         descriptor, temporary = tempfile.mkstemp(
             dir=str(destination_dir),
             prefix="notes-backup-",
@@ -845,6 +849,16 @@ class NoteStore:
 
         try:
             with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+                manifest = {
+                    "app": "omnify",
+                    "kind": "notes",
+                    "format": 1,
+                    "created": datetime.now(timezone.utc).isoformat(),
+                }
+                archive.writestr(
+                    MANIFEST_NAME,
+                    json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                )
                 for path in self.root.rglob("*"):
                     if not path.is_file():
                         continue
@@ -864,14 +878,6 @@ class NoteStore:
             except OSError:
                 pass
             raise
-
-        # Залишаємо тільки 10 найновіших архівів.
-        backups = sorted(destination_dir.glob("notes-*.zip"))
-        for old in backups[:-10]:
-            try:
-                old.unlink()
-            except OSError:
-                pass
         return target
 
     def restore_backup(self, archive_path: Path | str) -> int:

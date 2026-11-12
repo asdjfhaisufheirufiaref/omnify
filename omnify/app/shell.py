@@ -44,6 +44,8 @@ from omnify.core.theme import (
 )
 from omnify.modules import ALL_MODULES
 
+from .backup_ui import BackupSettingsPanel
+
 #: How long a status-bar message stays visible before it fades away.
 _STATUS_CLEAR_MS = 5000
 
@@ -73,6 +75,7 @@ class OmnifyApp(Gtk.Application):
         # :meth:`_start_tray_and_ticker`).
         self._sni = None  # StatusNotifierItem (system tray)
         self._settings_page: Optional[Gtk.Widget] = None
+        self._backup_panel: Optional[BackupSettingsPanel] = None
         self._language_combo: Optional[Gtk.ComboBoxText] = None
         self._theme_combo: Optional[Gtk.ComboBoxText] = None
         self._accent_combo: Optional[Gtk.ComboBoxText] = None
@@ -676,7 +679,7 @@ class OmnifyApp(Gtk.Application):
 
         files = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         files.get_style_context().add_class("omnify-card")
-        files_title = Gtk.Label(label="Themes and backup", xalign=0.0)
+        files_title = Gtk.Label(label="Themes", xalign=0.0)
         files_title.get_style_context().add_class("omnify-card-title")
         files.append(files_title)
         files_note = Gtk.Label(
@@ -698,6 +701,9 @@ class OmnifyApp(Gtk.Application):
         files_row.append(import_button)
         files.append(files_row)
         box.append(files)
+
+        self._backup_panel = BackupSettingsPanel(self.ctx, lambda: self._window)
+        box.append(self._backup_panel)
 
         data_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         data_card.get_style_context().add_class("omnify-card")
@@ -1179,6 +1185,8 @@ class OmnifyApp(Gtk.Application):
         i18n.translate_widget_tree(self._window)
         for module in self._modules.values():
             module.retranslate()
+        if self._backup_panel is not None:
+            self._backup_panel.refresh()
         if self._mini_window is not None:
             i18n.translate_widget_tree(self._mini_window)
         self._notify("Language changed")
@@ -1225,6 +1233,9 @@ class OmnifyApp(Gtk.Application):
     def _switch_to(self, module_id: str) -> None:
         if module_id == "settings":
             self._clear_nav_selection()
+            panel = getattr(self, "_backup_panel", None)
+            if panel is not None:
+                panel.refresh()
         if self._current_id == module_id:
             return
         if self._current_id is not None:
