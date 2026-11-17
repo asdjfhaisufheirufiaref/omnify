@@ -24,4 +24,9 @@ packages = [
     "omnify.app",
     "omnify.modules",
     "omnify.locales",
+    "omnify.plugins",
+    "omnify.plugins.ai_assistant",
 ]
+
+[tool.setuptools.package-data]
+"omnify.plugins.ai_assistant" = ["plugin.json"]

@@ -724,6 +724,27 @@ button:disabled { opacity: 0.55; }
     margin-bottom: 4px;
 }
 
+/* Command palette / quick switcher */
+.palette-title {
+    font-weight: 600;
+    color: var(--omnify-fg);
+}
+.palette-keys {
+    font-family: "JetBrains Mono", "Adwaita Mono", monospace;
+    font-size: 0.9em;
+    color: var(--omnify-fg-dim);
+    background: var(--omnify-bg-alt);
+    border: 1px solid var(--omnify-border);
+    border-radius: 6px;
+    padding: 2px 7px;
+}
+.shortcuts-title { font-weight: 600; }
+.shortcuts-keys {
+    font-family: "JetBrains Mono", "Adwaita Mono", monospace;
+    font-size: 0.9em;
+    color: var(--omnify-fg-dim);
+}
+
 /* A row being dragged to a new position (timer cards). */
 .omnify-dragging {
     border-color: var(--omnify-accent);

@@ -50,6 +50,9 @@ class ModuleContext:
         notify: Optional[Callable[[str], None]] = None,
         open_module: Optional[Callable[[str], None]] = None,
         get_module: Optional[Callable[[str], Any]] = None,
+        commands=None,
+        run_command: Optional[Callable[[str], bool]] = None,
+        show_window: Optional[Callable[[], None]] = None,
     ) -> None:
         self.storage = storage
         self.theme = theme
@@ -57,8 +60,17 @@ class ModuleContext:
         self.notify = notify or (lambda message: None)
         self.open_module = open_module or (lambda module_id: None)
         #: Look up another live module instance by id (``None`` when absent).
-        #: Used by the calendar to start timers/stopwatches from events.
+        #: Used by the calendar to start timers/stopwatches from events and by
+        #: plugins to call a module's public API.
         self.get_module = get_module or (lambda module_id: None)
+        #: The application's command registry (may be ``None`` in tests).
+        self.commands = commands
+        self.run_command = run_command or (lambda command_id: False)
+        #: Bring the main window to the front (used by interactive plugins).
+        self.show_window = show_window or (lambda: None)
+        #: Modules set this while recording a shortcut/trigger key so the
+        #: shell does not execute an app shortcut from the same keypress.
+        self.suspend_shortcuts = False
 
 
 class BaseModule:
@@ -88,6 +100,14 @@ class BaseModule:
     def build_view(self):
         """Return the GTK widget that displays this module. Override."""
         raise NotImplementedError
+
+    def commands(self):
+        """Return :class:`~omnify.core.commands.Command` objects.
+
+        Modules override this to expose their actions to the command palette,
+        editable shortcuts, the tray and plugins.  The default is no commands.
+        """
+        return ()
 
     def on_show(self) -> None:
         """Called before the view is shown. Override for live updates."""

@@ -30,6 +30,7 @@ import os
 import time
 from typing import Callable, Dict, List, Optional
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from .timer import (
@@ -280,6 +281,69 @@ class StopwatchModule(BaseModule):
         "/usr/share/sounds/freedesktop/stereo/complete.oga",
         "/usr/share/sounds/kde/freedesktop/stereo/complete.oga",
     )
+
+    def commands(self):
+        """Expose stopwatch controls to the palette and global shortcuts."""
+
+        def ready() -> bool:
+            return getattr(self, "_model", None) is not None
+
+        return (
+            Command(
+                "stopwatch.toggle",
+                "Start or pause the stopwatch",
+                self._command_toggle,
+                category="Stopwatch",
+                scope="stopwatch",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "stopwatch.start",
+                "Start/resume the stopwatch",
+                lambda: self._on_start(None),
+                category="Stopwatch",
+                scope="stopwatch",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "stopwatch.pause",
+                "Pause the stopwatch",
+                lambda: self._on_pause(None),
+                category="Stopwatch",
+                scope="stopwatch",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "stopwatch.lap",
+                "Record a stopwatch lap",
+                lambda: self._on_lap(None),
+                category="Stopwatch",
+                default_keys=("ctrl+shift+l",),
+                scope="stopwatch",
+                when=ready,
+            ),
+            Command(
+                "stopwatch.reset",
+                "Reset the stopwatch",
+                lambda: self._on_reset(None),
+                category="Stopwatch",
+                scope="stopwatch",
+                global_default=True,
+                when=ready,
+            ),
+        )
+
+    def _command_toggle(self) -> bool:
+        if getattr(self, "_model", None) is None:
+            return False
+        if self._model.state == "running":
+            self._on_pause(None)
+        else:
+            self._on_start(None)
+        return True
 
     def __init__(self, context) -> None:
         super().__init__(context)
@@ -858,6 +922,7 @@ class StopwatchModule(BaseModule):
             self._record_button.set_label("Record key…")
             return
         self._recording_for = True
+        self.ctx.suspend_shortcuts = True
         self._record_button.set_label("Press a key… (Esc cancels)")
 
     def _on_key_press(self, _controller, keyval: int, _hardware_keycode: int,
@@ -895,9 +960,11 @@ class StopwatchModule(BaseModule):
         if self._recording_for:
             if key_name == "Escape":
                 self._recording_for = False
+                self.ctx.suspend_shortcuts = False
                 self._record_button.set_label("Record key…")
             else:
                 self._recording_for = False
+                self.ctx.suspend_shortcuts = False
                 self._record_button.set_label("Record key…")
                 self._arm_trigger_grace()
                 self._key_label.set_label(combo)

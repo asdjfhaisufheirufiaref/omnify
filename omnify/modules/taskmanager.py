@@ -33,6 +33,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from .system import format_size
@@ -1632,6 +1633,83 @@ class TaskManagerModule(BaseModule):
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
+    def commands(self):
+        """Expose Task Manager navigation and refresh actions."""
+
+        def ready() -> bool:
+            return getattr(self, "_stack", None) is not None
+
+        def show_page(key: str):
+            def invoke():
+                if not ready():
+                    return False
+                self._stack.set_visible_child_name(key)
+                self._refresh_page(key)
+                button = getattr(self, "_tab_buttons", {}).get(key)
+                if button is not None:
+                    button.set_active(True)
+                return True
+
+            return invoke
+
+        return (
+            Command(
+                "tasks.refresh",
+                "Refresh Task Manager",
+                self._command_refresh,
+                category="Task Manager",
+                default_keys=("f5",),
+                scope="taskmanager",
+                when=ready,
+            ),
+            Command(
+                "tasks.focus_search",
+                "Search running processes",
+                self._focus_process_search,
+                category="Task Manager",
+                default_keys=("ctrl+f",),
+                scope="taskmanager",
+                when=ready,
+            ),
+            *[
+                Command(
+                    f"tasks.page.{key}",
+                    f"Task Manager: {label} tab",
+                    show_page(key),
+                    category="Task Manager",
+                    default_keys=(f"ctrl+{index}",),
+                    scope="taskmanager",
+                    when=ready,
+                )
+                for index, (key, label) in enumerate(
+                    (
+                        ("processes", "Processes"),
+                        ("performance", "Performance"),
+                        ("services", "Services"),
+                        ("startup", "Startup"),
+                        ("users", "Users"),
+                        ("details", "Details"),
+                    ),
+                    start=1,
+                )
+            ],
+        )
+
+    def _command_refresh(self) -> bool:
+        if getattr(self, "_stack", None) is None:
+            return False
+        self._do_tick()
+        return True
+
+    def _focus_process_search(self) -> bool:
+        entry = getattr(self, "_proc_search", None)
+        if entry is None:
+            return False
+        self._stack.set_visible_child_name("processes")
+        entry.grab_focus()
+        entry.select_region(0, -1)
+        return True
+
     def build_view(self):
         """Build the tabbed view, prime data with one tick, start the ticker."""
         from gi.repository import Gtk
@@ -1677,8 +1755,10 @@ class TaskManagerModule(BaseModule):
         # Tab row (radio ToggleButtons, like the sidebar).
         tabs_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         first_button = None
+        self._tab_buttons: Dict[str, Any] = {}
         for key, label in self._TABS:
             button = Gtk.ToggleButton(label=label)
+            self._tab_buttons[key] = button
             if first_button is None:
                 first_button = button
             else:

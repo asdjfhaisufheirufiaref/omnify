@@ -6,6 +6,7 @@ import datetime as _dt
 import os
 from typing import Any, Dict, List, Optional, Set
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from .alarm_engine import (
@@ -50,6 +51,41 @@ class AlarmModule(BaseModule):
         self._clock = AlarmClock()
         self._clock.load(context.storage.load(self.STATE_KEY, {}))
         self._save()
+
+    def commands(self):
+        """Expose alarm actions to the palette and global shortcuts."""
+
+        def ready() -> bool:
+            return getattr(self, "_root", None) is not None
+
+        return (
+            Command(
+                "alarm.new",
+                "New alarm…",
+                lambda: self._on_add_clicked(None),
+                category="Alarm",
+                scope="alarm",
+                when=ready,
+            ),
+            Command(
+                "alarm.stop",
+                "Stop the ringing alarm",
+                lambda: self._on_stop_clicked(None),
+                category="Alarm",
+                scope="alarm",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "alarm.snooze",
+                "Snooze the ringing alarm",
+                lambda: self._on_snooze_clicked(None),
+                category="Alarm",
+                scope="alarm",
+                global_default=True,
+                when=ready,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Persistence and helpers

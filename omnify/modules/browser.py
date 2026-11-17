@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from .browser_migration import (
@@ -69,6 +70,88 @@ class BrowserModule(BaseModule):
         self._migration_combo = None
         self._migration_status = None
         self._migration_copy_button = None
+
+    def commands(self):
+        """Expose browser actions to the command bus and shortcuts."""
+        return (
+            Command(
+                "browser.open",
+                "Open the private browser",
+                lambda: self._on_open_clicked(None),
+                category="Browser",
+                default_keys=("ctrl+shift+b",),
+                scope="browser",
+            ),
+            Command(
+                "browser.private",
+                "Open a private browser window",
+                lambda: self._on_private_clicked(None),
+                category="Browser",
+                scope="browser",
+            ),
+            Command(
+                "browser.tor",
+                "Open Tor Browser (maximum privacy)",
+                lambda: self._on_tor_clicked(None),
+                category="Browser",
+                scope="browser",
+            ),
+            Command(
+                "browser.focus_search",
+                "Focus the browser search box",
+                self._focus_search,
+                category="Browser",
+                default_keys=("ctrl+l",),
+                scope="browser",
+            ),
+        )
+
+    def _focus_search(self) -> bool:
+        entry = getattr(self, "_search_entry", None)
+        if entry is None:
+            return False
+        entry.grab_focus()
+        entry.select_region(0, -1)
+        return True
+
+    # -- public API used by plugins and the command bus -----------------
+    def open_url(self, url: str, *, private: bool = False) -> bool:
+        """Open an explicit URL in the managed browser.
+
+        This is the same path as the in-app search box, so profile
+        protections and the configured proxy apply to plugin actions too.
+        """
+        value = str(url or "").strip()
+        if not value:
+            return False
+        try:
+            target = url_from_input(value, self._config.search_url)
+        except ValueError as exc:
+            self.ctx.notify(str(exc))
+            return False
+        if not target:
+            return False
+        self._launch([target], private=private)
+        return True
+
+    def search(self, query: str, *, private: bool = False) -> bool:
+        """Open the configured search engine for *query*."""
+        value = str(query or "").strip()
+        if not value:
+            return False
+        try:
+            target = url_from_input(value, self._config.search_url)
+        except ValueError as exc:
+            self.ctx.notify(str(exc))
+            return False
+        if not target:
+            return False
+        self._launch([target], private=private)
+        return True
+
+    def last_url(self) -> str:
+        """The most recently opened URL (empty when nothing was opened yet)."""
+        return str(getattr(self._config, "last_url", "") or "")
 
     # ------------------------------------------------------------------
     # View construction

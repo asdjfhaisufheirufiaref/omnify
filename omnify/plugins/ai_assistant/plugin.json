@@ -1,0 +1,16 @@
+{
+  "id": "ai_assistant",
+  "name": "AI Assistant",
+  "version": "1.0.0",
+  "description": "Ask local or cloud AI models, summarize notes, draft calendar events and create research notes. Disabled by default; cloud providers require an explicit privacy acknowledgement.",
+  "author": "Omnify",
+  "entrypoint": "plugin.py",
+  "api_version": 1,
+  "default_enabled": false,
+  "permissions": [
+    "network",
+    "notes",
+    "calendar",
+    "browser"
+  ]
+}

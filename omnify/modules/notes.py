@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Any
 
 from ..core.backup import BackupConfig, BackupManager
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
+from ..core.templates import TemplateEngine, TemplateStore
 from .notes_engine import Note, NoteStore
 from .notes_preview import build_preview
 from .notes_render import export_bundle_html, export_html, export_pdf
@@ -110,6 +112,10 @@ class NotesModule(BaseModule):
 
         # Сховище файлів нотаток. Створюється в _load_notes().
         self._store: NoteStore | None = None
+
+        # Користувацькі шаблони з {{date}}/{{title}}/{{cursor}} тощо.
+        self._template_store = TemplateStore(self.ctx.storage)
+        self._template_window = None
 
         # Посилання на відкритий діалог вибору картинки. Якщо не зберігати
         # його в атрибуті, Python може зібрати об'єкт збирачем сміття,
@@ -1063,6 +1069,7 @@ class NotesModule(BaseModule):
         contents: str = "",
         folder: str | None = None,
         focus_title: bool = True,
+        cursor_offset: int | None = None,
     ) -> Note:
         """Створити нотатку в поточній або заданій папці й показати її."""
         previous = self._current_note
@@ -1100,6 +1107,10 @@ class NotesModule(BaseModule):
             self._title_entry.grab_focus()
         else:
             self._body_view.grab_focus()
+            if cursor_offset is not None:
+                buffer = self._body_view.get_buffer()
+                offset = max(0, min(int(cursor_offset), buffer.get_char_count()))
+                buffer.place_cursor(buffer.get_iter_at_offset(offset))
         self._save_selected_id()
         self._schedule_save()
         return note
@@ -1111,7 +1122,7 @@ class NotesModule(BaseModule):
             (
                 tr("Daily plan"),
                 (
-                    f"# {tr('Daily plan')}\n\n"
+                    f"# {tr('Daily plan')} · {{{{date}}}}\n\n"
                     f"## {tr('Priorities')}\n"
                     "- [ ] \n"
                     "- [ ] \n\n"
@@ -1124,7 +1135,7 @@ class NotesModule(BaseModule):
                 tr("Meeting notes"),
                 (
                     f"# {tr('Meeting notes')}\n\n"
-                    f"**{tr('Date')}:** \n"
+                    f"**{tr('Date')}:** {{{{date}}}}\n"
                     f"**{tr('Attendees')}:** \n\n"
                     f"## {tr('Agenda')}\n"
                     "- \n\n"
@@ -1159,15 +1170,52 @@ class NotesModule(BaseModule):
             ),
         )
 
+    def _template_choices(self) -> list[tuple[str, str, str | None]]:
+        """Built-in and user templates as ``(name, body, id)``."""
+        choices = [
+            (name, body, None) for name, body in self._template_definitions()
+        ]
+        store = getattr(self, "_template_store", None)
+        if store is not None:
+            choices.extend(
+                (template.name, template.body, template.id)
+                for template in store.all()
+            )
+        return choices
+
+    def _render_template(self, name: str, body: str) -> tuple[str, int | None]:
+        engine = TemplateEngine()
+        rendered = engine.render(
+            body,
+            {
+                "title": name,
+                "folder": (
+                    self._folder_filter
+                    if self._folder_filter not in {_ALL_NOTES, _UNFILED}
+                    else ""
+                ),
+            },
+        )
+        return rendered.text, rendered.cursor
+
+    def _use_template(self, name: str, body: str) -> None:
+        text, cursor = self._render_template(name, body)
+        self._create_note(
+            name,
+            text,
+            focus_title=False,
+            cursor_offset=cursor,
+        )
+
     def _on_new_from_template(self) -> None:
-        """Показати вибір вбудованого шаблону."""
+        """Показати вбудовані та користувацькі шаблони."""
         from gi.repository import Gtk
 
         window = Gtk.Window(title=tr("New from template"))
         window.set_transient_for(self._parent_window())
         window.set_modal(True)
         window.set_destroy_with_parent(True)
-        window.set_default_size(420, 420)
+        window.set_default_size(460, 520)
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         outer.set_margin_top(12)
@@ -1179,34 +1227,252 @@ class NotesModule(BaseModule):
         title.get_style_context().add_class("omnify-card-title")
         outer.append(title)
         intro = Gtk.Label(
-            label=tr("The note will be created in the current folder."),
+            label=tr(
+                "The note will be created in the current folder. "
+                "Templates support {{date}}, {{time}}, {{title}} and {{cursor}}."
+            ),
             xalign=0.0,
         )
         intro.set_wrap(True)
         intro.get_style_context().add_class("omnify-dim")
         outer.append(intro)
 
-        for name, contents in self._template_definitions():
-            button = Gtk.Button(label=name)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_vexpand(True)
+        template_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        for name, body, template_id in self._template_choices():
+            label = name if template_id is None else f"{name} · custom"
+            button = Gtk.Button(label=label)
             button.set_halign(Gtk.Align.FILL)
             button.get_style_context().add_class("notes-folder-button")
             button.connect(
                 "clicked",
-                lambda _button, title=name, text=contents: (
+                lambda _button, title=name, text=body: (
                     window.close(),
-                    self._create_note(title, text, focus_title=False),
+                    self._use_template(title, text),
                 ),
             )
-            outer.append(button)
+            template_list.append(button)
+        scroller.set_child(template_list)
+        outer.append(scroller)
 
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        manage = Gtk.Button(label=tr("Manage templates…"))
+        manage.connect("clicked", lambda _button: self._on_manage_templates())
+        buttons.append(manage)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        buttons.append(spacer)
         close_button = Gtk.Button(label=tr("Close"))
-        close_button.set_halign(Gtk.Align.END)
-        close_button.get_style_context().add_class("notes-folder-button")
         close_button.connect("clicked", lambda _button: window.close())
-        outer.append(close_button)
+        buttons.append(close_button)
+        outer.append(buttons)
 
         window.set_child(outer)
         window.present()
+
+    def _on_manage_templates(self) -> None:
+        """Create, edit and delete user templates."""
+        from gi.repository import Gtk
+
+        if getattr(self, "_template_store", None) is None:
+            self._template_store = TemplateStore(self.ctx.storage)
+        if self._template_window is not None:
+            self._template_window.present()
+            return
+
+        window = Gtk.Window(title=tr("Templates"))
+        window.set_transient_for(self._parent_window())
+        window.set_modal(True)
+        window.set_destroy_with_parent(True)
+        window.set_default_size(820, 560)
+        self._template_window = window
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_margin_top(12)
+        outer.set_margin_bottom(12)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
+        heading = Gtk.Label(label=tr("Templates"), xalign=0.0)
+        heading.get_style_context().add_class("omnify-card-title")
+        outer.append(heading)
+        hint = Gtk.Label(
+            label=tr(
+                "Variables: {{date}}, {{time}}, {{datetime}}, {{date:YYYY-MM-DD}}, "
+                "{{yesterday}}, {{tomorrow}}, {{weekday}}, {{title}}, {{folder}}, "
+                "{{uuid}}, {{random}}, {{clipboard}}, {{prompt:Question}}, {{cursor}}."
+            ),
+            xalign=0.0,
+        )
+        hint.set_wrap(True)
+        hint.get_style_context().add_class("omnify-dim")
+        outer.append(hint)
+
+        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        paned.set_vexpand(True)
+        list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        list_scroller = Gtk.ScrolledWindow()
+        list_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        list_scroller.set_child(list_box)
+        paned.set_start_child(list_scroller)
+        paned.set_resize_start_child(False)
+        paned.set_size_request(220, -1)
+
+        editor = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        editor.set_margin_start(10)
+        name_label = Gtk.Label(label=tr("Template name"), xalign=0.0)
+        editor.append(name_label)
+        name_entry = Gtk.Entry()
+        name_entry.set_placeholder_text(tr("Meeting notes"))
+        editor.append(name_entry)
+        body_label = Gtk.Label(label=tr("Markdown body"), xalign=0.0)
+        editor.append(body_label)
+        body_view = Gtk.TextView()
+        body_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        body_view.set_monospace(True)
+        body_scroller = Gtk.ScrolledWindow()
+        body_scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        body_scroller.set_vexpand(True)
+        body_scroller.set_child(body_view)
+        editor.append(body_scroller)
+        paned.set_end_child(editor)
+        outer.append(paned)
+
+        state = {"selected": None}
+
+        def get_body() -> str:
+            buffer = body_view.get_buffer()
+            start, end = buffer.get_bounds()
+            return buffer.get_text(start, end, True)
+
+        def set_body(text: str) -> None:
+            body_view.get_buffer().set_text(text)
+
+        def refresh_list() -> None:
+            while True:
+                child = list_box.get_first_child()
+                if child is None:
+                    break
+                list_box.remove(child)
+            for template in self._template_store.all():
+                row = Gtk.Button(label=template.name)
+                row.set_halign(Gtk.Align.FILL)
+                row.get_style_context().add_class("notes-folder-button")
+                row.connect(
+                    "clicked", lambda _b, item=template: load(item)
+                )
+                list_box.append(row)
+
+        def load(template) -> None:
+            state["selected"] = template.id
+            name_entry.set_text(template.name)
+            set_body(template.body)
+
+        def new_template(_button=None) -> None:
+            state["selected"] = None
+            name_entry.set_text("")
+            set_body("")
+            name_entry.grab_focus()
+
+        def save(_button=None) -> None:
+            try:
+                record = self._template_store.save(
+                    name_entry.get_text(),
+                    get_body(),
+                    state["selected"],
+                )
+            except ValueError as exc:
+                self.ctx.notify(str(exc))
+                return
+            state["selected"] = record.id
+            refresh_list()
+            self.ctx.notify(tr("Template saved"))
+
+        def delete(_button=None) -> None:
+            if not state["selected"]:
+                return
+            if not self._confirm(
+                tr("Delete template?"),
+                tr("This cannot be undone."),
+                tr("Delete"),
+            ):
+                return
+            self._template_store.delete(state["selected"])
+            new_template()
+            refresh_list()
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        new_button = Gtk.Button(label=tr("New"))
+        new_button.connect("clicked", new_template)
+        delete_button = Gtk.Button(label=tr("Delete"))
+        delete_button.get_style_context().add_class("omnify-danger")
+        delete_button.connect("clicked", delete)
+        save_button = Gtk.Button(label=tr("Save"))
+        save_button.get_style_context().add_class("omnify-accent")
+        save_button.connect("clicked", save)
+        close_button = Gtk.Button(label=tr("Close"))
+        close_button.connect("clicked", lambda _b: window.close())
+        buttons.append(new_button)
+        buttons.append(delete_button)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        buttons.append(spacer)
+        buttons.append(close_button)
+        buttons.append(save_button)
+        outer.append(buttons)
+
+        refresh_list()
+        window.set_child(outer)
+        window.connect("destroy", lambda _w: setattr(self, "_template_window", None))
+        window.present()
+
+    def capture_text(
+        self,
+        text: str,
+        title: str | None = None,
+        target: str = "new",
+    ) -> str | None:
+        """Public quick-capture API used by the shell and browser helpers.
+
+        ``target`` is ``"new"`` for a fresh note or ``"journal"`` to append
+        to today's journal.  Returns the resulting note id.
+        """
+        if getattr(self, "_view", None) is None:
+            return None
+        captured = str(text or "").strip()
+        if not captured:
+            return None
+        self._sync_current_note()
+        if target == "journal":
+            today = datetime.now().strftime("%Y-%m-%d")
+            label = f"{tr('Journal')} · {today}"
+            for note in getattr(self, "_notes", []):
+                if note.folder == "Journal" and note.label == label:
+                    note.contents = note.contents.rstrip() + "\n\n" + captured + "\n"
+                    self._save_note(note)
+                    if self._current_note is note:
+                        self._show_note(note)
+                    return note.id
+            contents = f"# {label}\n\n## {tr('Capture')}\n{captured}\n"
+            note = self._create_note(
+                label, contents, folder="Journal", focus_title=False
+            )
+            return note.id
+
+        clean_title = str(title or "").strip()
+        if not clean_title:
+            first_line = next(
+                (line.strip().lstrip("# ").strip() for line in captured.splitlines() if line.strip()),
+                "",
+            )
+            clean_title = first_line[:80] or tr("Quick capture")
+        note = self._create_note(
+            clean_title,
+            captured,
+            focus_title=False,
+        )
+        return note.id
 
     def open_today_journal(self) -> None:
         """Публічна точка входу для Dashboard та інших модулів."""
@@ -1234,6 +1500,253 @@ class NotesModule(BaseModule):
             return []
         limit = max(0, int(limit))
         return [(note.id, note.label, note.folder) for note in notes[:limit]]
+
+    def search_notes(
+        self, query: str, limit: int = 12
+    ) -> list[tuple[str, str, str]]:
+        """Search notes for the quick switcher.
+
+        An empty query returns the most recent notes.  Matching is
+        case-insensitive across title, body, folder and tags; results are
+        ranked by title matches first and then by recency.
+        """
+        notes = getattr(self, "_notes", [])
+        if not isinstance(notes, list):
+            return []
+        limit = max(0, int(limit))
+        needle = str(query or "").strip().casefold()
+        if not needle:
+            return self.recent_notes(limit)
+
+        def score(note: Note) -> int:
+            title = note.label.casefold()
+            folder = note.folder.casefold()
+            body = note.contents.casefold()
+            tags = " ".join(note.tags).casefold()
+            value = 0
+            if needle in title:
+                value += 100
+                if title.startswith(needle):
+                    value += 50
+            if needle in folder:
+                value += 30
+            if needle in tags:
+                value += 25
+            if needle in body:
+                value += 10
+            return value
+
+        ranked = [(score(note), note) for note in notes]
+        ranked = [(value, note) for value, note in ranked if value > 0]
+        ranked.sort(key=lambda pair: (pair[0], pair[1].updated_at), reverse=True)
+        return [
+            (note.id, note.label, note.folder)
+            for _value, note in ranked[:limit]
+        ]
+
+    def commands(self):
+        """Expose Notes actions to the palette and shortcut editor."""
+        def ready() -> bool:
+            return getattr(self, "_view", None) is not None
+
+        def has_note() -> bool:
+            return ready() and getattr(self, "_current_note", None) is not None
+
+        def editor_focused() -> bool:
+            if not has_note():
+                return False
+            try:
+                return bool(self._body_view.has_focus())
+            except Exception:
+                return False
+
+        def call(method_name: str):
+            def invoke():
+                if not ready():
+                    return False
+                method = getattr(self, method_name, None)
+                if method is None:
+                    return False
+                import inspect
+
+                try:
+                    signature = inspect.signature(method)
+                    required = [
+                        parameter
+                        for parameter in signature.parameters.values()
+                        if parameter.default is inspect.Parameter.empty
+                        and parameter.kind
+                        in (
+                            inspect.Parameter.POSITIONAL_ONLY,
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                        )
+                    ]
+                    method(None) if required else method()
+                except (TypeError, ValueError):
+                    method()
+                return True
+
+            return invoke
+
+        return (
+            Command(
+                "notes.new",
+                "New note",
+                call("_on_new_note_clicked"),
+                category="Notes",
+                description="Create a blank note in the current folder.",
+                scope="notes",
+            ),
+            Command(
+                "notes.new_template",
+                "New note from template…",
+                call("_on_new_from_template"),
+                category="Notes",
+                default_keys=("ctrl+alt+t",),
+                scope="notes",
+            ),
+            Command(
+                "notes.manage_templates",
+                "Manage note templates…",
+                call("_on_manage_templates"),
+                category="Notes",
+                scope="notes",
+            ),
+            Command(
+                "notes.today_journal",
+                "Open today's journal",
+                call("_on_open_journal"),
+                category="Notes",
+                default_keys=("ctrl+alt+j",),
+                scope="notes",
+            ),
+            Command(
+                "notes.save",
+                "Save note now",
+                self.save_state,
+                category="Notes",
+                default_keys=("ctrl+s",),
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.search",
+                "Search notes",
+                call("_focus_search"),
+                category="Notes",
+                default_keys=("ctrl+f",),
+                scope="notes",
+            ),
+            Command(
+                "notes.find_replace",
+                "Find and replace…",
+                call("_on_find_replace"),
+                category="Notes",
+                default_keys=("ctrl+h",),
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.bold",
+                "Bold selection",
+                lambda: self._format_selection("bold"),
+                category="Notes",
+                default_keys=("ctrl+b",),
+                scope="notes",
+                when=editor_focused,
+            ),
+            Command(
+                "notes.italic",
+                "Italic selection",
+                lambda: self._format_selection("italic"),
+                category="Notes",
+                default_keys=("ctrl+i",),
+                scope="notes",
+                when=editor_focused,
+            ),
+            Command(
+                "notes.link",
+                "Insert Markdown link",
+                lambda: self._format_selection("link"),
+                category="Notes",
+                default_keys=("ctrl+k",),
+                scope="notes",
+                when=editor_focused,
+            ),
+            Command(
+                "notes.duplicate",
+                "Duplicate note",
+                call("_on_duplicate_note"),
+                category="Notes",
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.history",
+                "Open version history…",
+                call("_on_open_history"),
+                category="Notes",
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.trash",
+                "Open Trash…",
+                call("_on_open_trash"),
+                category="Notes",
+                scope="notes",
+            ),
+            Command(
+                "notes.backup",
+                "Back up notes now",
+                call("_on_backup_notes"),
+                category="Notes",
+                scope="notes",
+            ),
+            Command(
+                "notes.export_html",
+                "Export note as HTML…",
+                call("_on_export_html"),
+                category="Notes",
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.export_pdf",
+                "Export note as PDF…",
+                call("_on_export_pdf"),
+                category="Notes",
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.export_markdown",
+                "Export note as Markdown…",
+                call("_on_export_markdown"),
+                category="Notes",
+                scope="notes",
+                when=has_note,
+            ),
+        )
+
+    # -- public read API used by plugins -------------------------------
+    def current_note_id(self) -> str | None:
+        note = getattr(self, "_current_note", None)
+        return note.id if note is not None else None
+
+    def current_note_title(self) -> str:
+        note = getattr(self, "_current_note", None)
+        return note.label if note is not None else ""
+
+    def current_note_text(self) -> str:
+        """Current editor contents, synced from the GTK buffer first."""
+        if getattr(self, "_current_note", None) is None:
+            return ""
+        try:
+            self._sync_current_note()
+        except Exception:
+            pass
+        return str(self._current_note.contents or "")
 
     def open_note(self, note_id: str) -> bool:
         """Відкрити нотатку за id, скинувши фільтри Dashboard-переходу."""
@@ -1914,6 +2427,13 @@ class NotesModule(BaseModule):
         self._search_query = entry.get_text().strip().casefold()
         self._refresh_visibility()
         self._refresh_tag_popover()
+
+    def _focus_search(self) -> None:
+        """Focus and select the Notes search field."""
+        if getattr(self, "_search_entry", None) is None:
+            return
+        self._search_entry.grab_focus()
+        self._search_entry.select_region(0, -1)
 
     def _insert_markdown_snippet(self, snippet: str) -> None:
         """Вставити Markdown-шаблон у позицію курсора."""
@@ -2815,33 +3335,9 @@ class NotesModule(BaseModule):
         has_control = bool(state & Gdk.ModifierType.CONTROL_MASK)
         has_shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
 
-        # Швидкі клавіші форматування. Працюють лише без Shift, щоб не
-        # перехоплювати системні комбінації на кшталт Ctrl+Shift+V.
-        if has_control and not has_shift:
-            lowered = Gdk.keyval_to_lower(keyval)
-            if lowered == Gdk.KEY_s and self._current_note is not None:
-                # Ctrl+S зберігає негайно, не чекаючи 900 мс.
-                self.save_state()
-                self._set_save_status(tr("Saved"))
-                return True
-            if lowered == Gdk.KEY_f:
-                self._search_entry.grab_focus()
-                self._search_entry.select_region(0, -1)
-                return True
-            if lowered == Gdk.KEY_h and self._current_note is not None:
-                self._on_find_replace()
-                return True
-
-        if has_control and not has_shift and self._current_note is not None:
-            shortcuts = {
-                Gdk.KEY_b: "bold",
-                Gdk.KEY_i: "italic",
-                Gdk.KEY_k: "link",
-            }
-            action = shortcuts.get(Gdk.keyval_to_lower(keyval))
-            if action is not None:
-                self._format_selection(action)
-                return True
+        # Command-like shortcuts (Ctrl+S, Ctrl+B, Ctrl+F, …) live in the
+        # application command registry so Settings can edit them.  This
+        # controller only keeps the clipboard-image special case.
 
         # Ctrl+Shift+V зазвичай означає "вставити як звичайний текст",
         # тому не забираємо цю комбінацію в себе.

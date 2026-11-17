@@ -50,6 +50,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Callable, Dict, List, Optional
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 
@@ -613,6 +614,164 @@ class TimerModule(BaseModule):
         "/usr/share/sounds/freedesktop/stereo/complete.oga",
         "/usr/share/sounds/kde/freedesktop/stereo/complete.oga",
     )
+
+    def commands(self):
+        """Expose timer controls to the palette, CLI and global shortcuts."""
+
+        def ready() -> bool:
+            return getattr(self, "_manager", None) is not None
+
+        return (
+            Command(
+                "timer.start",
+                "Start or resume the first timer",
+                self._command_start_first,
+                category="Timer",
+                description=(
+                    "Useful as a global shortcut, including Alt+F4: keep a "
+                    "timer ready and start it as the window closes."
+                ),
+                scope="timer",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "timer.toggle",
+                "Toggle the first timer",
+                self._command_toggle_first,
+                category="Timer",
+                scope="timer",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "timer.pause_all",
+                "Pause all running timers",
+                self._command_pause_all,
+                category="Timer",
+                scope="timer",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "timer.resume_all",
+                "Resume all paused timers",
+                self._command_resume_all,
+                category="Timer",
+                scope="timer",
+                global_default=True,
+                when=ready,
+            ),
+            Command(
+                "timer.reset_all",
+                "Reset all timers",
+                self._command_reset_all,
+                category="Timer",
+                scope="timer",
+                when=ready,
+            ),
+            Command(
+                "timer.add",
+                "Add a timer",
+                self._command_add_timer,
+                category="Timer",
+                default_keys=("ctrl+shift+t",),
+                scope="timer",
+                when=ready,
+            ),
+        )
+
+    # -- command implementations -------------------------------------------
+    def _after_timer_change(self, tid: Optional[str] = None) -> None:
+        if tid is not None and tid in getattr(self, "_cards", {}):
+            self._sync_card(tid)
+        elif getattr(self, "_cards", None):
+            self._refresh_all()
+        self.save_state()
+
+    def _command_start_first(self) -> bool:
+        manager = getattr(self, "_manager", None)
+        if manager is None:
+            return False
+        for entry in manager.all():
+            if entry.state in ("idle", "finished"):
+                try:
+                    manager.start(entry.id)
+                except ValueError as exc:
+                    self.ctx.notify(str(exc))
+                    return False
+                self._play_start_sound(entry.name)
+                self._after_timer_change(entry.id)
+                return True
+        for entry in manager.all():
+            if entry.state == "paused":
+                try:
+                    manager.resume(entry.id)
+                except ValueError:
+                    continue
+                self._after_timer_change(entry.id)
+                return True
+        self.ctx.notify(tr("No idle or paused timer to start"))
+        return False
+
+    def _command_toggle_first(self) -> bool:
+        manager = getattr(self, "_manager", None)
+        if manager is None:
+            return False
+        for entry in manager.all():
+            if entry.state == "running":
+                try:
+                    manager.pause(entry.id)
+                except ValueError:
+                    continue
+                self._after_timer_change(entry.id)
+                return True
+        return self._command_start_first()
+
+    def _command_pause_all(self) -> bool:
+        manager = getattr(self, "_manager", None)
+        if manager is None:
+            return False
+        changed = False
+        for entry in manager.all():
+            if entry.state == "running":
+                try:
+                    manager.pause(entry.id)
+                    changed = True
+                except ValueError:
+                    pass
+        self._after_timer_change()
+        return changed
+
+    def _command_resume_all(self) -> bool:
+        manager = getattr(self, "_manager", None)
+        if manager is None:
+            return False
+        changed = False
+        for entry in manager.all():
+            if entry.state == "paused":
+                try:
+                    manager.resume(entry.id)
+                    changed = True
+                except ValueError:
+                    pass
+        self._after_timer_change()
+        return changed
+
+    def _command_reset_all(self) -> bool:
+        manager = getattr(self, "_manager", None)
+        if manager is None:
+            return False
+        for entry in manager.all():
+            manager.reset(entry.id)
+        self._after_timer_change()
+        return True
+
+    def _command_add_timer(self) -> bool:
+        if getattr(self, "_manager", None) is None:
+            return False
+        self._on_add_timer(None)
+        return True
 
     def __init__(self, context) -> None:
         super().__init__(context)
@@ -1645,6 +1804,7 @@ class TimerModule(BaseModule):
             self._cancel_recording()
             return
         self._recording_for = tid
+        self.ctx.suspend_shortcuts = True
         self._cards[tid]["record_button"].set_label("Press a key… (Esc cancels)")
 
     def _cancel_recording(self) -> None:
@@ -1653,6 +1813,7 @@ class TimerModule(BaseModule):
         if self._recording_for is not None and self._recording_for in self._cards:
             self._cards[self._recording_for]["record_button"].set_label("Record key…")
         self._recording_for = None
+        self.ctx.suspend_shortcuts = False
 
     def _on_key_press(self, _controller, keyval: int, _hardware_keycode: int,
                       state) -> bool:
@@ -1703,6 +1864,7 @@ class TimerModule(BaseModule):
                     self.ctx.notify(f"Key recorded: {combo}")
                     self._sync_card(tid)
                     self.save_state()
+                self.ctx.suspend_shortcuts = False
             return True
         return False  # counting is the monitor's job, not the window's
 

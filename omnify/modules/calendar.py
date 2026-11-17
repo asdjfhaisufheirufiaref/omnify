@@ -38,6 +38,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from ..core.theme import CATEGORY_COLORS, category_color
@@ -1329,6 +1330,195 @@ class CalendarModule(BaseModule):
     _DAY_WIDTH = 128
     _GUTTER_WIDTH = 58
 
+    def commands(self):
+        """Expose calendar actions to the command palette and shortcut editor."""
+        def ready() -> bool:
+            return getattr(self, "_view", None) is not None
+
+        def not_editing() -> bool:
+            if not ready():
+                return False
+            return not self._focus_is_editable()
+
+        def run(method, *args, **kwargs):
+            def invoke():
+                if not ready():
+                    return False
+                method(*args, **kwargs)
+                return True
+
+            return invoke
+
+        return (
+            Command(
+                "calendar.new_event",
+                "New calendar event",
+                run(self._open_event_dialog),
+                category="Calendar",
+                default_keys=("ctrl+n",),
+                scope="calendar",
+            ),
+            Command(
+                "calendar.new_habit",
+                "New habit",
+                run(self._open_event_dialog, habit=True),
+                category="Calendar",
+                default_keys=("ctrl+shift+n",),
+                scope="calendar",
+            ),
+            Command(
+                "calendar.search",
+                "Search calendar",
+                run(self._focus_search),
+                category="Calendar",
+                default_keys=("ctrl+f",),
+                scope="calendar",
+            ),
+            Command(
+                "calendar.today",
+                "Jump to today",
+                run(self._go_today),
+                category="Calendar",
+                default_keys=("ctrl+t",),
+                scope="calendar",
+            ),
+            Command(
+                "calendar.previous",
+                "Previous day/week",
+                run(self._navigate, -1),
+                category="Calendar",
+                default_keys=("ctrl+left",),
+                scope="calendar",
+                when=not_editing,
+            ),
+            Command(
+                "calendar.next",
+                "Next day/week",
+                run(self._navigate, 1),
+                category="Calendar",
+                default_keys=("ctrl+right",),
+                scope="calendar",
+                when=not_editing,
+            ),
+            Command(
+                "calendar.undo",
+                "Undo calendar change",
+                run(self._undo),
+                category="Calendar",
+                default_keys=("ctrl+z",),
+                scope="calendar",
+                when=not_editing,
+            ),
+            Command(
+                "calendar.redo",
+                "Redo calendar change",
+                run(self._redo),
+                category="Calendar",
+                default_keys=("ctrl+shift+z", "ctrl+y"),
+                scope="calendar",
+                when=not_editing,
+            ),
+            Command(
+                "calendar.zoom_in",
+                "Zoom calendar in",
+                run(self._zoom_hour_height, 1),
+                category="Calendar",
+                default_keys=("ctrl+plus", "ctrl+equal"),
+                scope="calendar",
+            ),
+            Command(
+                "calendar.zoom_out",
+                "Zoom calendar out",
+                run(self._zoom_hour_height, -1),
+                category="Calendar",
+                default_keys=("ctrl+minus",),
+                scope="calendar",
+            ),
+            Command(
+                "calendar.zoom_reset",
+                "Reset calendar zoom",
+                run(self._zoom_hour_height, 0),
+                category="Calendar",
+                default_keys=("ctrl+0",),
+                scope="calendar",
+            ),
+            *[
+                Command(
+                    f"calendar.page.{page}",
+                    f"Calendar: {label} page",
+                    self._calendar_page_action(page),
+                    category="Calendar",
+                    default_keys=(f"ctrl+{index}",),
+                    scope="calendar",
+                )
+                for index, (page, label) in enumerate(
+                    (
+                        ("week", "Week"),
+                        ("day", "Day"),
+                        ("habits", "Habits"),
+                        ("stats", "Statistics"),
+                        ("goals", "Goals"),
+                        ("search", "Search"),
+                    ),
+                    start=1,
+                )
+            ],
+        )
+
+    def _calendar_page_action(self, page: str):
+        def invoke():
+            if getattr(self, "_view", None) is None or getattr(self, "_stack", None) is None:
+                return False
+            self._stack.set_visible_child_name(page)
+            return True
+
+        return invoke
+
+    def create_event(
+        self,
+        date_iso: str,
+        time: Optional[str],
+        title: str,
+        notes: str = "",
+        *,
+        end_time: Optional[str] = None,
+        category: str = "",
+        recurrence=None,
+        habit: bool = False,
+        actions=None,
+        start_on_close: bool = False,
+        reminder=None,
+    ) -> Dict[str, Any]:
+        """Public event-creation API used by commands and plugins.
+
+        The widget layer may not have been built in headless tests/plugins,
+        so the store is created lazily.  The calendar view is refreshed when
+        it is live.
+        """
+        if not hasattr(self, "_store") or self._store is None:
+            self._store = EventStore(self.ctx.storage)
+            self._cats = CategoryStore(self.ctx.storage)
+            self._cats.ensure()
+        event = self._store.add(
+            date_iso,
+            time,
+            title,
+            notes,
+            end_time=end_time,
+            category=category,
+            recurrence=recurrence,
+            habit=habit,
+            actions=actions,
+            start_on_close=start_on_close,
+            reminder=reminder,
+        )
+        if getattr(self, "_view", None) is not None:
+            try:
+                self._refresh_current()
+            except Exception:
+                pass
+        return event
+
     # -- construction -------------------------------------------------
     def build_view(self):
         from gi.repository import Gtk
@@ -1760,58 +1950,12 @@ class CalendarModule(BaseModule):
     def _on_module_key_pressed(
         self, _controller, keyval, _keycode, state
     ) -> bool:
-        """Calendar-wide shortcuts (Ctrl combos, safe inside text fields)."""
-        from gi.repository import Gdk
+        """Reserved for non-command editing behaviour.
 
-        control = bool(state & Gdk.ModifierType.CONTROL_MASK)
-        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
-        if not control:
-            return False
-        if keyval == Gdk.KEY_f:
-            self._focus_search()
-            return True
-        if keyval == Gdk.KEY_n:
-            self._open_event_dialog(habit=shift)
-            return True
-        if keyval == Gdk.KEY_t:
-            self._go_today()
-            return True
-        if keyval in (Gdk.KEY_Left, Gdk.KEY_Right):
-            if self._focus_is_editable():
-                return False
-            self._navigate(-1 if keyval == Gdk.KEY_Left else 1)
-            return True
-        if keyval == Gdk.KEY_z:
-            if self._focus_is_editable():
-                return False
-            self._redo() if shift else self._undo()
-            return True
-        if keyval == Gdk.KEY_y:
-            if self._focus_is_editable():
-                return False
-            self._redo()
-            return True
-        if keyval in (Gdk.KEY_plus, Gdk.KEY_equal, Gdk.KEY_KP_Add):
-            self._zoom_hour_height(1)
-            return True
-        if keyval in (Gdk.KEY_minus, Gdk.KEY_KP_Subtract):
-            self._zoom_hour_height(-1)
-            return True
-        if keyval == Gdk.KEY_0:
-            self._zoom_hour_height(0)
-            return True
-        page_keys = {
-            Gdk.KEY_1: "week",
-            Gdk.KEY_2: "month",
-            Gdk.KEY_3: "habits",
-            Gdk.KEY_4: "stats",
-            Gdk.KEY_5: "goals",
-            Gdk.KEY_6: "search",
-        }
-        page = page_keys.get(keyval)
-        if page:
-            self._stack.set_visible_child_name(page)
-            return True
+        Calendar shortcuts now live in the application command registry, so
+        Settings can rebind them and the command palette can find them.  The
+        controller stays installed for compatibility with future local keys.
+        """
         return False
 
     def _focus_search(self) -> None:

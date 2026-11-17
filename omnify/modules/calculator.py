@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from ..core.theme import CATEGORY_COLORS, parse_hex_color, theme_palette
@@ -138,6 +139,59 @@ class CalculatorModule(BaseModule):
         "#e6b455",
         "#9aa0ab",
     )
+
+    def commands(self):
+        """Expose calculator actions to the command bus."""
+
+        def ready() -> bool:
+            return getattr(self, "_input", None) is not None
+
+        def input_focused() -> bool:
+            if not ready():
+                return False
+            try:
+                return bool(self._input.has_focus())
+            except Exception:
+                return False
+
+        return (
+            Command(
+                "calculator.clear",
+                "Clear calculator expression",
+                self._clear_expression,
+                category="Calculator",
+                default_keys=("ctrl+l",),
+                scope="calculator",
+                when=ready,
+            ),
+            Command(
+                "calculator.evaluate",
+                "Evaluate calculator expression",
+                self._evaluate,
+                category="Calculator",
+                default_keys=("return",),
+                scope="calculator",
+                when=input_focused,
+            ),
+            Command(
+                "calculator.copy_result",
+                "Copy calculator result",
+                self._copy_result,
+                category="Calculator",
+                default_keys=("ctrl+shift+c",),
+                scope="calculator",
+                when=ready,
+            ),
+            Command(
+                "calculator.focus_input",
+                "Focus calculator expression",
+                self._focus_input_guarded,
+                category="Calculator",
+                default_keys=("ctrl+shift+l",),
+                scope="calculator",
+                when=ready,
+            ),
+        )
 
     def __init__(self, context) -> None:
         super().__init__(context)
@@ -919,14 +973,8 @@ class CalculatorModule(BaseModule):
 
         control = bool(state & Gdk.ModifierType.CONTROL_MASK)
         shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
-        if control and keyval in (Gdk.KEY_l, Gdk.KEY_L):
-            self._clear_expression()
-            return True
-        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-            if shift:
-                return False
-            self._evaluate()
-            return True
+        # Ctrl+L and Enter are registered commands so they can be rebound
+        # in Settings; only editing/navigation keys stay local.
         if keyval == Gdk.KEY_Escape:
             self._suggestion_wrap.set_visible(False)
             self._clear_expression()

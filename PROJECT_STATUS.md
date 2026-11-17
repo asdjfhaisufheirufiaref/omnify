@@ -1,6 +1,6 @@
 # Omnify — v1 status and Notes handoff
 
-Updated: 2026-11-12. This file is the handoff source of truth for the
+Updated: 2026-11-17. This file is the handoff source of truth for the
 next session. The student report for practical works is in
 `ПРАКТИЧНІ_РОБОТИ.md`; the public-facing project guide is `README.md`.
 
@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **474 tests**.
+module are implemented. The full headless suite is green: **535 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -63,9 +63,29 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
   snooze, custom sound, notifications and ringing banner.
 - **Task manager** — processes, performance, services, startup, users,
   details and safe kill flows.
+- **Command center** — a VS Code/Obsidian-style command palette
+  (`Ctrl+Shift+P`), quick switcher (`Ctrl+P`) for notes/modules/commands,
+  editable shortcuts for every command (including module actions), global
+  shortcuts that keep working while Omnify is hidden in the tray, and
+  `omnify --command <id>` for desktop-environment bindings.
+- **Templates and quick capture** — built-in and user Markdown templates
+  with `{{date}}`, `{{time}}`, `{{title}}`, `{{prompt:…}}`, `{{cursor}}`
+  and related variables; a separate quick-capture window prefilled from
+  the clipboard and able to save into a new note or today's journal.
+- **Plugins** — built-in and drop-in folders under
+  `$XDG_DATA_HOME/omnify/plugins/<id>/`, manifest validation, API v1,
+  explicit trust for external code, namespaced commands, plugin settings,
+  settings cards and clean unload/reload.
+- **AI Assistant** — the first built-in plugin, disabled by default. It
+  supports local OpenAI-compatible servers (Ollama/LM Studio/llama.cpp/
+  LocalAI/vLLM), OpenAI, OpenRouter and custom gateways, API keys from
+  settings or `OMNIFY_AI_API_KEY`, a one-time cloud privacy warning, and
+  commands for asking, asking about a note, summarizing, creating calendar
+  events and drafting browser research notes.
 - **Settings** — EN↔UA switching (English default), theme mode, six
   accents, custom colours, fonts, radius, background image, sidebar
-  side/width, theme import/export, backup policy/management and data reset.
+  side/width, theme import/export, shortcut editor, backup
+  policy/management, plugins, AI Assistant and data reset.
 
 The default look includes the preferred **left sidebar** and subtle
 accent circles drawn by the theme itself (no image file required).
@@ -124,8 +144,12 @@ importer for the complete transfer.
 
 - Python 3.14 + `gi`/GTK 4; standard library only, no pip packages.
 - Only `omnify/app/shell.py` and `omnify/app/backup_ui.py` import `gi` at
-  module level (pinned GTK/GDK). Tool modules import GTK lazily inside
-  functions and are headless-safe.
+  module level (pinned GTK/GDK). Tool modules, plugins and the AI client
+  import GTK lazily inside functions and are headless-safe.
+- The command bus (`omnify/core/commands.py`) is the shared entry point
+  for the palette, editable shortcuts, `--command` and plugins. The plugin
+  manager is headless; AI requests are standard-library `urllib` calls in
+  `omnify/plugins/ai_assistant/client.py`.
 - Pure models hold testable behaviour in `tests/`; GTK views stay thin.
 - Theme colours come from `omnify/core/theme.py`; widgets do not hard-code
   colours. Degrade gracefully when optional system tools are absent.
@@ -214,6 +238,34 @@ The Notes module is implemented:
   `tests/test_notes_render.py`;
 - registered in `omnify/modules/__init__.py`.
 
+## Command center and plugins
+
+- `omnify/core/commands.py` parses canonical combinations, merges
+  user overrides with command defaults, detects conflicts by scope and
+  persists only overrides.
+- `omnify/app/palette.py`, `omnify/app/shortcuts_ui.py` and
+  `omnify/app/quick_capture.py` provide the palette, editor and capture
+  window. The shell dispatches local keys in the capture phase and global
+  keys through the shared evdev monitor with duplicate suppression.
+- `Alt+F4` is not forced as an application default; it is available as a
+  user-assigned global shortcut. `timer.start` / `timer.toggle` and the
+  stopwatch controls stay available because the process and tray stay
+  alive when the window closes.
+- `omnify/core/plugins.py` validates `plugin.json`, prevents entry points
+  from escaping their folder, keeps external plugins untrusted until the
+  user confirms, namespaces commands as `<plugin_id>.<command_id>` and
+  removes commands/panels on disable or reload.
+- `omnify/plugins/ai_assistant/` contains the first built-in plugin:
+  `client.py` is a dependency-free OpenAI-compatible client; `plugin.py`
+  wires commands and the settings card. Cloud calls require a one-time
+  acknowledgement; localhost endpoints do not.
+- Browser and Notes expose plugin-facing APIs (`BrowserModule.open_url`,
+  `search`, `last_url`; `NotesModule.current_note_text`,
+  `current_note_title`, `capture_text`, `open_note`).
+- Tests: `tests/test_commands.py`, `tests/test_fuzzy.py`,
+  `tests/test_module_commands.py`, `tests/test_templates.py`,
+  `tests/test_plugins.py`, `tests/test_ai_client.py`.
+
 ## UI artifacts
 
 - `docs/wireframes/dashboard.svg` — dashboard layout with quick actions,
@@ -229,11 +281,16 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **474 OK**
+- `python3 -m unittest discover -s tests` → **535 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance
+- `omnify --command timer.start` works through the same command bus as the
+  palette, shortcuts and plugins
+- Settings → Plugins lists AI Assistant as disabled; enabling it registers
+  the AI commands, and Settings → AI Assistant shows local/cloud provider
+  fields and the privacy warning
 - `omnify-browser` opens LibreWolf maximized; Tor entry opens Tor Browser
   in Ukrainian
 - Browser migration page detects Brave and opens the Firefox importer

@@ -22,6 +22,7 @@ Only this file imports GTK at module level; the model code in
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -34,7 +35,15 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 from omnify import __version__
 from omnify.core import BaseModule, ModuleContext, Storage, Theme
 from omnify.core import i18n
+from omnify.core.commands import (
+    Command,
+    CommandRegistry,
+    ShortcutManager,
+    format_keys,
+    normalize_combo,
+)
 from omnify.core.logfile import log
+from omnify.core.plugins import PluginManager
 from omnify.core.theme import (
     COLOR_TOKENS,
     normalize_custom,
@@ -45,6 +54,11 @@ from omnify.core.theme import (
 from omnify.modules import ALL_MODULES
 
 from .backup_ui import BackupSettingsPanel
+from .key_utils import key_event_combo
+from .palette import CommandPalette, PaletteItem
+from .plugins_ui import PluginSettingsPanel
+from .quick_capture import QuickCaptureWindow
+from .shortcuts_ui import ShortcutSettingsPanel
 
 #: How long a status-bar message stays visible before it fades away.
 _STATUS_CLEAR_MS = 5000
@@ -63,11 +77,23 @@ class OmnifyApp(Gtk.Application):
         self._nav_buttons: Dict[str, Gtk.ToggleButton] = {}
         self._current_id: Optional[str] = None
         self._initial_module: Optional[str] = initial_module
+        self._initial_command: Optional[str] = None
         self._status_timeout_id: Optional[int] = None
         # Populated by :meth:`_build_window`, which runs before any of the
         # callbacks below can fire.
         self.ctx: Optional[ModuleContext] = None
         self.theme: Optional[Theme] = None
+        self._commands = CommandRegistry()
+        self._shortcuts: Optional[ShortcutManager] = None
+        self._plugins: Optional[PluginManager] = None
+        self._plugin_panel: Optional[PluginSettingsPanel] = None
+        self._plugin_panels_box: Optional[Gtk.Box] = None
+        self._palette = CommandPalette(self)
+        self._quick_capture = QuickCaptureWindow(self)
+        self._shortcut_panel: Optional[ShortcutSettingsPanel] = None
+        self._global_monitor = None
+        self._global_monitor_warned = False
+        self._last_local_shortcut = ("", 0.0)
         self._paned: Optional[Gtk.Paned] = None
         self._stack: Optional[Gtk.Stack] = None
         self._status_label: Optional[Gtk.Label] = None
@@ -99,9 +125,16 @@ class OmnifyApp(Gtk.Application):
     # Gtk.Application
     # ------------------------------------------------------------------
     def do_command_line(self, command_line) -> int:
-        """Handle ``omnify --module <id>`` in the running instance."""
+        """Handle ``--module`` and ``--command`` in the running instance.
+
+        ``--command timer.start`` is intentionally the same command bus the
+        palette, shortcuts and plugins use.  It lets a desktop environment
+        shortcut start a timer even when the user chose a system-wide key
+        combination that Omnify cannot register itself.
+        """
         args = list(command_line.get_arguments() or [])
         module_id: Optional[str] = None
+        command_id: Optional[str] = None
         index = 0
         while index < len(args):
             arg = str(args[index])
@@ -111,19 +144,38 @@ class OmnifyApp(Gtk.Application):
                 continue
             if arg.startswith("--module="):
                 module_id = arg.split("=", 1)[1]
+            if arg == "--command" and index + 1 < len(args):
+                command_id = str(args[index + 1])
+                index += 2
+                continue
+            if arg.startswith("--command="):
+                command_id = arg.split("=", 1)[1]
             index += 1
         known = {module.id for module in ALL_MODULES} | {"settings"}
         if module_id in known:
             self._initial_module = module_id
+        if command_id:
+            self._initial_command = command_id
         if self._window is None:
             self.activate()
+            if command_id:
+                GLib.idle_add(self._run_initial_command)
         else:
             self._window.present()
-            if self._current_id != self._initial_module:
-                self._switch_to(self._initial_module or ALL_MODULES[0].id)
+            if self._initial_module is not None:
+                self._switch_to(self._initial_module)
+            if command_id:
+                GLib.idle_add(self._run_initial_command)
             elif self._current_id is not None:
                 self._switch_to(self._current_id)
         return 0
+
+    def _run_initial_command(self) -> bool:
+        command_id = self._initial_command
+        self._initial_command = None
+        if command_id:
+            self.execute_command(command_id)
+        return False
 
     def do_activate(self) -> None:
         """Create the main window on first activation, then present it."""
@@ -150,6 +202,11 @@ class OmnifyApp(Gtk.Application):
         if self._global_tick_id is not None:
             GLib.source_remove(self._global_tick_id)
             self._global_tick_id = None
+        if self._plugins is not None:
+            try:
+                self._plugins.shutdown()
+            except Exception as exc:
+                log(f"plugins: shutdown failed: {exc!r}")
         for module in self._modules.values():
             saver = getattr(module, "save_state", None)
             if callable(saver):
@@ -157,6 +214,12 @@ class OmnifyApp(Gtk.Application):
                     saver()
                 except Exception:
                     pass
+        if self._global_monitor is not None:
+            try:
+                self._global_monitor.unsubscribe_key_combo(self._on_global_key)
+            except Exception:
+                pass
+            self._global_monitor = None
         if self._sni is not None:
             try:
                 self._sni.shutdown()
@@ -381,21 +444,285 @@ class OmnifyApp(Gtk.Application):
     # ------------------------------------------------------------------
     def open_module(self, module_id: str) -> None:
         """Navigate to *module_id*; wired into ``ModuleContext.open_module``."""
+        if module_id == "settings":
+            self._switch_to("settings")
+            self._clear_nav_selection()
+            return
         button = self._nav_buttons.get(module_id)
         if button is not None and not button.get_active():
             button.set_active(True)
+
+    # ------------------------------------------------------------------
+    # Command bus, palette and shortcuts
+    # ------------------------------------------------------------------
+    def _register_app_commands(self) -> None:
+        """Register shell actions once, before modules contribute theirs."""
+        commands = [
+            Command(
+                "app.command_palette",
+                "Command palette",
+                self._open_command_palette,
+                category="Application",
+                description="Search and run any Omnify command.",
+                default_keys=("ctrl+shift+p",),
+            ),
+            Command(
+                "app.quick_switcher",
+                "Quick switcher",
+                self._open_quick_switcher,
+                category="Application",
+                description="Jump to a note, module or command.",
+                default_keys=("ctrl+p",),
+            ),
+            Command(
+                "app.settings",
+                "Open settings",
+                lambda: self._switch_to("settings"),
+                category="Application",
+                description="Appearance, shortcuts, backups and plugins.",
+                default_keys=("ctrl+comma",),
+            ),
+            Command(
+                "app.show_window",
+                "Show Omnify",
+                self._show_main_window,
+                category="Application",
+                description="Bring the main window back from the tray.",
+            ),
+            Command(
+                "app.hide_window",
+                "Hide Omnify",
+                self._hide_main_window,
+                category="Application",
+                description="Hide the window while timers keep running.",
+            ),
+            Command(
+                "app.quick_capture",
+                "Quick capture…",
+                self._open_quick_capture,
+                category="Application",
+                description="Capture text into a new note or today's journal.",
+                default_keys=("ctrl+alt+n",),
+            ),
+            Command(
+                "app.about",
+                "About Omnify",
+                lambda: self._on_about_clicked(None),
+                category="Application",
+            ),
+            Command(
+                "app.plugins",
+                "Plugins and AI settings…",
+                lambda: self._switch_to("settings"),
+                category="Application",
+                description="Rescan, trust and configure drop-in plugins.",
+            ),
+        ]
+        for module_cls in ALL_MODULES:
+            commands.append(
+                Command(
+                    f"app.open.{module_cls.id}",
+                    f"Open {module_cls.name}",
+                    lambda module_id=module_cls.id: self._switch_to(module_id),
+                    category="Navigation",
+                    description=module_cls.description,
+                )
+            )
+        commands.append(
+            Command(
+                "app.open.settings",
+                "Open Settings",
+                lambda: self._switch_to("settings"),
+                category="Navigation",
+            )
+        )
+        self._commands.register_many(commands)
+
+    def execute_command(self, command_id: str) -> bool:
+        """Execute a command by stable id (palette, shortcut, tray, plugin)."""
+        return self._commands.execute(command_id)
+
+    def _open_command_palette(self) -> None:
+        self._palette.open("commands")
+
+    def _open_quick_switcher(self) -> None:
+        self._palette.open("quick")
+
+    def _open_quick_capture(self) -> None:
+        window = getattr(self, "_quick_capture", None)
+        if window is None:
+            if self.ctx is not None:
+                self.ctx.notify(i18n.tr("Quick capture is not available yet"))
+            return
+        window.open()
+
+    def palette_items(self, query: str, mode: str = "commands") -> List[PaletteItem]:
+        """Build palette rows for commands, notes and (later) plugins."""
+        items: List[PaletteItem] = []
+        for command in self._commands.all():
+            if not command.available():
+                continue
+            keys = ""
+            if self._shortcuts is not None:
+                keys = format_keys(self._shortcuts.keys_for(command.id))
+            items.append(
+                PaletteItem(
+                    title=i18n.tr(command.title),
+                    subtitle=i18n.tr(command.description),
+                    category=i18n.tr(command.category),
+                    keys=keys,
+                    action=lambda command_id=command.id: self.execute_command(
+                        command_id
+                    ),
+                    item_id=command.id,
+                    kind="command",
+                    search_extra=command.id,
+                )
+            )
+        if mode == "quick":
+            notes = self._modules.get("notes")
+            finder = getattr(notes, "search_notes", None)
+            if callable(finder):
+                for note_id, label, folder in finder(query, 12):
+                    items.append(
+                        PaletteItem(
+                            title=label or i18n.tr("Untitled"),
+                            subtitle=folder or i18n.tr("Unfiled"),
+                            category=i18n.tr("Notes"),
+                            action=lambda note_id=note_id: self._open_note(note_id),
+                            item_id=note_id,
+                            kind="note",
+                        )
+                    )
+        return items
+
+    def _open_note(self, note_id: str) -> None:
+        self._switch_to("notes")
+        notes = self._modules.get("notes")
+        opener = getattr(notes, "open_note", None)
+        if callable(opener):
+            opener(note_id)
+
+    def _show_main_window(self) -> None:
+        if self._window is not None:
+            self._window.present()
+            self._window.grab_focus()
+
+    def _hide_main_window(self) -> None:
+        if self._window is not None:
+            self._window.hide()
+
+    def _on_window_key_pressed(self, _controller, keyval, _keycode, state) -> bool:
+        """Dispatch a keypress through the editable shortcut map."""
+        if self.ctx is None or self.ctx.suspend_shortcuts:
+            return False
+        combo = key_event_combo(keyval, state)
+        if not combo or self._shortcuts is None:
+            return False
+        scope = self._current_id or "app"
+        matches = self._shortcuts.find_bindings(combo, scope=scope)
+        for binding in matches:
+            if self.execute_command(binding.command.id):
+                self._last_local_shortcut = (combo, time.monotonic())
+                # Alt+F4 is often the window-manager close shortcut.  If the
+                # user assigned it to a global command, run the command and
+                # let the key travel on so the window closes as requested.
+                if combo == "alt+f4" and binding.global_enabled:
+                    return False
+                return True
+        return False
+
+    def _install_global_shortcuts(self) -> None:
+        """Subscribe the shell to the existing evdev monitor when needed."""
+        if self._shortcuts is None:
+            return
+        active = any(
+            binding.global_enabled for binding in self._shortcuts.bound_bindings()
+        )
+        if not active:
+            if self._global_monitor is not None:
+                try:
+                    self._global_monitor.unsubscribe_key_combo(self._on_global_key)
+                except Exception:
+                    pass
+                self._global_monitor = None
+            return
+        if self._global_monitor is not None:
+            return
+        try:
+            from omnify.core.input_monitor import get_default_monitor
+
+            monitor = get_default_monitor()
+            monitor.subscribe_key_combo(self._on_global_key)
+            self._global_monitor = monitor
+            if not monitor.start() and not self._global_monitor_warned:
+                self._global_monitor_warned = True
+                if self.ctx is not None:
+                    self.ctx.notify(
+                        i18n.tr(
+                            "Global shortcuts need read access to /dev/input "
+                            "(add your user to the 'input' group)."
+                        )
+                    )
+        except Exception as exc:
+            log(f"global shortcuts: failed to start monitor: {exc!r}")
+
+    def refresh_global_shortcuts(self) -> None:
+        """Settings changed; ensure the monitor is subscribed if required."""
+        self._install_global_shortcuts()
+
+    def _on_global_key(self, combo: str) -> None:
+        """Runs on the evdev reader thread; hop to the GTK main loop."""
+        GLib.idle_add(self._dispatch_global_combo, combo)
+
+    def _dispatch_global_combo(self, combo: str) -> bool:
+        if self.ctx is None or self.ctx.suspend_shortcuts or self._shortcuts is None:
+            return False
+        # The local controller also sees keys while the window is active.
+        # Ignore the near-simultaneous evdev copy to avoid double execution.
+        last_combo, last_at = self._last_local_shortcut
+        if (
+            self._window is not None
+            and self._window.is_active()
+            and combo == last_combo
+            and time.monotonic() - last_at < 0.6
+        ):
+            return False
+        scope = self._current_id or "app"
+        matches = self._shortcuts.find_bindings(
+            combo, scope=scope, global_only=True
+        )
+        for binding in matches:
+            if self.execute_command(binding.command.id):
+                return False
+        return False
 
     # ------------------------------------------------------------------
     # Window construction
     # ------------------------------------------------------------------
     def _build_window(self) -> Gtk.ApplicationWindow:
         self.theme = Theme()
+        storage = Storage()
+        self._register_app_commands()
+        self._shortcuts = ShortcutManager(storage, self._commands)
         self.ctx = ModuleContext(
-            Storage(),
+            storage,
             theme=self.theme,
             notify=self._notify,
             open_module=self.open_module,
             get_module=lambda module_id: self._modules.get(module_id),
+            commands=self._commands,
+            run_command=self.execute_command,
+            show_window=self._show_main_window,
+        )
+        self._plugins = PluginManager(
+            storage,
+            self._commands,
+            notify=self._notify,
+            get_module=lambda module_id: self._modules.get(module_id),
+            open_module=self.open_module,
+            show_window=self._show_main_window,
+            run_command=self.execute_command,
         )
         self._custom_colors = normalize_custom(
             self.ctx.settings.get("theme_custom", {})
@@ -451,6 +778,14 @@ class OmnifyApp(Gtk.Application):
 
         window.set_child(outer)
 
+        # Capture command shortcuts before a focused Entry/TextView sees
+        # them.  Module-local editing keys (Enter, arrows, bracket pairing)
+        # remain in the modules; only registered commands are intercepted.
+        key_controller = Gtk.EventControllerKey()
+        key_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        key_controller.connect("key-pressed", self._on_window_key_pressed)
+        window.add_controller(key_controller)
+
         # Initial view: the requested module (for per-app desktop launchers),
         # otherwise the first registered module (Dashboard).
         initial = self._initial_module
@@ -461,6 +796,7 @@ class OmnifyApp(Gtk.Application):
             self._clear_nav_selection()
         else:
             self._nav_buttons[ALL_MODULES[0].id].set_active(True)
+        self._install_global_shortcuts()
         return window
 
     def _build_sidebar(self) -> Gtk.Box:
@@ -624,9 +960,22 @@ class OmnifyApp(Gtk.Application):
             scroller.set_vexpand(True)
             scroller.set_child(module.view)
             i18n.translate_widget_tree(module.view)
+            try:
+                self._commands.register_many(module.commands())
+            except Exception as exc:
+                log(f"module {module.id}: command registration failed: {exc!r}")
             stack.add_titled(
                 scroller, module.id, i18n.tr(module.name)
             )
+
+        # Plugins may contribute commands, settings panels and module
+        # integrations; load them after every module view exists, but
+        # before the Settings page is assembled.
+        if self._plugins is not None:
+            try:
+                self._plugins.load_all()
+            except Exception as exc:
+                log(f"plugins: initial load failed: {exc!r}")
 
         self._settings_page = self._build_settings_page()
         i18n.translate_widget_tree(self._settings_page)
@@ -676,6 +1025,26 @@ class OmnifyApp(Gtk.Application):
         appearance.append(language_note)
         appearance.append(self._build_custom_theme_controls())
         box.append(appearance)
+
+        if self._shortcuts is not None:
+            self._shortcut_panel = ShortcutSettingsPanel(
+                self.ctx,
+                self._shortcuts,
+                on_change=self.refresh_global_shortcuts,
+            )
+            box.append(self._shortcut_panel.build())
+
+        if self._plugins is not None:
+            self._plugin_panel = PluginSettingsPanel(
+                self._plugins,
+                on_change=self._on_plugins_changed,
+            )
+            box.append(self._plugin_panel.build())
+            self._plugin_panels_box = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL, spacing=12
+            )
+            box.append(self._plugin_panels_box)
+            self._refresh_plugin_panels()
 
         files = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         files.get_style_context().add_class("omnify-card")
@@ -733,6 +1102,36 @@ class OmnifyApp(Gtk.Application):
         self._accent_combo.connect("changed", self._on_accent_combo_changed)
         self._language_combo.connect("changed", self._on_language_combo_changed)
         return box
+
+    def _refresh_plugin_panels(self) -> None:
+        """(Re)build the settings cards contributed by loaded plugins."""
+        from gi.repository import Gtk
+
+        box = self._plugin_panels_box
+        manager = self._plugins
+        if box is None or manager is None:
+            return
+        while True:
+            child = box.get_first_child()
+            if child is None:
+                break
+            box.remove(child)
+        for manifest, title, builder in manager.settings_panels():
+            try:
+                widget = builder()
+            except Exception as exc:
+                log(f"plugin {manifest.id}: settings panel failed: {exc!r}")
+                continue
+            if widget is None:
+                continue
+            box.append(widget)
+
+    def _on_plugins_changed(self) -> None:
+        """Plugins changed: refresh commands, shortcuts and panels."""
+        self._refresh_plugin_panels()
+        if self._shortcut_panel is not None:
+            self._shortcut_panel.refresh()
+        self.refresh_global_shortcuts()
 
     def _build_custom_theme_controls(self) -> Gtk.Widget:
         """An expander with colour swatches, font, radius and layout controls."""
@@ -1187,6 +1586,8 @@ class OmnifyApp(Gtk.Application):
             module.retranslate()
         if self._backup_panel is not None:
             self._backup_panel.refresh()
+        if self._shortcut_panel is not None:
+            self._shortcut_panel.refresh()
         if self._mini_window is not None:
             i18n.translate_widget_tree(self._mini_window)
         self._notify("Language changed")

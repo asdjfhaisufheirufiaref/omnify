@@ -1539,4 +1539,239 @@ TRANSLATIONS = {
     "Choose sync folder": "Виберіть папку для синхронізації",
     "Could not sync notes: {error}": "Не вдалося синхронізувати нотатки: {error}",
     "Notes synced to: {path}": "Нотатки синхронізовано в: {path}",
+    # ------------------------------------------------------------------
+    # Command palette, shortcuts, quick capture, plugins and AI
+    # ------------------------------------------------------------------
+    "Command palette": "Палітра команд",
+    "Quick switcher": "Швидкий перехід",
+    "Type a command, note or module — ↑/↓ to choose, Enter to run": (
+        "Введіть команду, нотатку або модуль — ↑/↓ для вибору, Enter для"
+        "запуску"
+    ),
+    "Esc closes · commands and actions are searchable": (
+        "Esc закриває · команди й дії доступні для пошуку"
+    ),
+    "Notes and commands · Esc closes": "Нотатки й команди · Esc закриває",
+    "Esc closes · every command is searchable": (
+        "Esc закриває · кожна команда доступна для пошуку"
+    ),
+    "Nothing found. Try another word or press Esc.": (
+        "Нічого не знайдено. Спробуйте інше слово або натисніть Esc."
+    ),
+    "Every action is editable. Use the search box, press Record, then press the new combination. Global shortcuts also work while Omnify is hidden in the system tray.": (
+        "Кожну дію можна змінити. Скористайтеся пошуком, натисніть «Записати»"
+        "й натисніть нову комбінацію. Глобальні скорочення працюють і тоді,"
+        "коли Omnify сховано в системному лотку."
+    ),
+    "Search commands…": "Пошук команд…",
+    "Restore every default shortcut": "Відновити всі типові скорочення",
+    "Global": "Глобальне",
+    "Works while Omnify is hidden in the tray": "Працює, коли Omnify сховано в лотку",
+    "Record…": "Записати…",
+    "Record": "Записати",
+    "Reset this shortcut": "Скинути це скорочення",
+    "Reset all": "Скинути все",
+    "Not assigned": "Не призначено",
+    "Record shortcut": "Записати скорочення",
+    "Capture the next key combination": "Захопити наступну комбінацію клавіш",
+    "Press Record and then the key combination, or type it below (for example alt+f4 or ctrl+shift+p).": (
+        "Натисніть «Записати» й натисніть комбінацію або введіть її нижче"
+        "(наприклад, alt+f4 чи ctrl+shift+p)."
+    ),
+    "Enter a key combination": "Введіть комбінацію клавіш",
+    "Already used by: {names}": "Уже використовується: {names}",
+    "Press keys now…": "Натисніть клавіші…",
+    "Listening…": "Очікування…",
+    "Shortcut cleared — press Save": "Скорочення очищено — натисніть «Зберегти»",
+    "Quick capture": "Швидке захоплення",
+    "Quick capture…": "Швидке захоплення…",
+    "Capture a thought, a selection or research notes. The clipboard is pre-filled when available.": (
+        "Захопіть думку, виділений текст або дослідницькі нотатки. Буфер"
+        "обміну підставляється автоматично, якщо доступний."
+    ),
+    "Save to:": "Зберегти до:",
+    "Paste clipboard": "Вставити з буфера",
+    "Ctrl+Enter saves · Esc closes": "Ctrl+Enter зберігає · Esc закриває",
+    "Capture": "Захопити",
+    "Nothing to capture yet": "Ще нічого захоплювати",
+    "Notes module is not available": "Модуль нотаток недоступний",
+    "Could not create a note": "Не вдалося створити нотатку",
+    "Captured to Notes": "Захоплено в нотатки",
+    "Quick capture is not available yet": "Швидке захоплення ще недоступне",
+    "Plugins": "Плагіни",
+    "Drop a plugin folder into the Omnify plugins directory and press Rescan. External plugins run Python code with your permissions, so they stay disabled until you trust them.": (
+        "Додайте теку плагіна до каталогу плагінів Omnify і натисніть"
+        "«Пересканувати». Зовнішні плагіни виконують Python-код із вашими"
+        "правами, тому вони вимкнені, доки ви їм не довірите."
+    ),
+    "Open plugins folder": "Відкрити теку плагінів",
+    "Rescan": "Пересканувати",
+    "Built-in plugins ship with Omnify; external folders are read from the data directory.": (
+        "Вбудовані плагіни постачаються разом з Omnify; зовнішні теки"
+        "читаються з каталогу даних."
+    ),
+    "No description": "Немає опису",
+    "Permissions: {items}": "Дозволи: {items}",
+    "Plugin errors:": "Помилки плагінів:",
+    "Built-in": "Вбудований",
+    "External": "Зовнішній",
+    "Loaded": "Завантажено",
+    "Enabled": "Увімкнено",
+    "Disabled": "Вимкнено",
+    "Reload": "Перезавантажити",
+    "Disable": "Вимкнути",
+    "Enable": "Увімкнути",
+    "Trust {name}?": "Довіряти «{name}»?",
+    "Plugins run Python code with your user permissions and can read files, use the network and change your data. Only enable plugins you trust.": (
+        "Плагіни виконують Python-код із правами вашого користувача, можуть"
+        "читати файли, використовувати мережу та змінювати дані. Увімкнюйте"
+        "лише ті плагіни, яким довіряєте."
+    ),
+    "Trust and enable": "Довіряти й увімкнути",
+    "AI Assistant": "AI-помічник",
+    "Ask AI…": "Запитати AI…",
+    "Ask AI": "Запитати AI",
+    "Question": "Запитання",
+    "AI answer": "Відповідь AI",
+    "Ask AI about the current note…": "Запитати AI про поточну нотатку…",
+    "Ask AI about this note": "Запитати AI про цю нотатку",
+    "Question about “{title}”": "Запитання про «{title}»",
+    "Summarize the current note with AI": "Підсумувати поточну нотатку через AI",
+    "Summary · {title}": "Підсумок · {title}",
+    "Create a calendar event with AI…": "Створити подію календаря через AI…",
+    "Create a calendar event": "Створити подію календаря",
+    "Describe the event, for example: “Dentist tomorrow at 15:00 for 45 minutes”. Today is {date}.": (
+        "Опишіть подію, наприклад: «Стоматолог завтра о 15:00 на 45 хвилин»."
+        "Сьогодні {date}."
+    ),
+    "Create “{title}”?": "Створити «{title}»?",
+    "Create event": "Створити подію",
+    "Event created: {title}": "Подію створено: {title}",
+    "Could not create the event: {error}": "Не вдалося створити подію: {error}",
+    "Could not understand the event: {error}": "Не вдалося зрозуміти подію: {error}",
+    "all day": "весь день",
+    "Research with AI and the browser…": "Дослідження з AI і браузером…",
+    "Research with AI": "Дослідження з AI",
+    "What should the browser search for?": "Що шукати в браузері?",
+    "Research notes": "Дослідницькі нотатки",
+    "Research · {topic}": "Дослідження · {topic}",
+    "AI Assistant settings…": "Налаштування AI-помічника…",
+    "Open Settings → AI Assistant to configure the model.": (
+        "Відкрийте «Налаштування → AI-помічник», щоб налаштувати модель."
+    ),
+    "AI is thinking…": "AI думає…",
+    "AI is already working on a request.": "AI вже виконує запит.",
+    "Open a note first.": "Спочатку відкрийте нотатку.",
+    "The current note is empty.": "Поточна нотатка порожня.",
+    "This provider is not local. The text you send, including any note content you choose to include, leaves this computer and is handled under that provider's privacy policy. Prefer a local model for private notes.": (
+        "Цей провайдер не локальний. Надісланий текст, зокрема вміст нотатки,"
+        "залишає цей комп'ютер і обробляється за політикою конфіденційності"
+        "провайдера. Для приватних нотаток обирайте локальну модель."
+    ),
+    "Send this prompt to {provider}?": "Надіслати запит до {provider}?",
+    "Send to cloud provider": "Надіслати хмарному провайдеру",
+    "Cloud AI requires an explicit privacy acknowledgement in AI settings.": (
+        "Хмарний AI потребує явного підтвердження конфіденційності в"
+        "налаштуваннях AI."
+    ),
+    "Local providers keep prompts on this computer. Cloud providers receive the prompt and any note text you include; they ask for confirmation once before the first request.": (
+        "Локальні провайдери залишають запити на цьому комп'ютері. Хмарні"
+        "отримують запит і текст нотатки, який ви додали; перед першим"
+        "запитом вони один раз просять підтвердження."
+    ),
+    "Provider": "Провайдер",
+    "Base URL": "Базова URL-адреса",
+    "Model": "Модель",
+    "API key": "API-ключ",
+    "optional for local models": "не потрібен для локальних моделей",
+    "The key is stored in Omnify's local settings. For stronger separation, leave it empty and set OMNIFY_AI_API_KEY.": (
+        "Ключ зберігається в локальних налаштуваннях Omnify. Для кращого"
+        "розділення залиште поле порожнім і задайте OMNIFY_AI_API_KEY."
+    ),
+    "Advanced": "Додатково",
+    "Temperature": "Температура",
+    "Timeout (seconds)": "Тайм-аут (секунди)",
+    "Local endpoint: prompts stay on this computer.": (
+        "Локальна адреса: запити залишаються на цьому комп'ютері."
+    ),
+    "⚠ Cloud provider: prompts and any included note text leave this computer. Never send secrets you are not allowed to share.": (
+        "⚠ Хмарний провайдер: запити й доданий текст нотаток залишають цей"
+        "комп'ютер. Не надсилайте секрети, які не можна розкривати."
+    ),
+    "Load defaults": "Завантажити типові",
+    "Test connection": "Перевірити з'єднання",
+    "Save AI settings": "Зберегти налаштування AI",
+    "AI settings saved": "Налаштування AI збережено",
+    "Saved. The model is ready to use.": "Збережено. Модель готова до роботи.",
+    "Testing the connection…": "Перевірка з'єднання…",
+    "Connection OK: {answer}": "З'єднання працює: {answer}",
+    "Copied to the clipboard": "Скопійовано в буфер обміну",
+    "Save as note": "Зберегти як нотатку",
+    "Saved to Notes": "Збережено в нотатках",
+    "The Notes module is not available": "Модуль нотаток недоступний",
+    "The Calendar module is not available": "Модуль календаря недоступний",
+    "Continue": "Продовжити",
+    "Copy": "Копіювати",
+    "Plugins and AI settings…": "Плагіни й налаштування AI…",
+    "Clear calculator expression": "Очистити вираз калькулятора",
+    "Evaluate calculator expression": "Обчислити вираз калькулятора",
+    "Copy calculator result": "Скопіювати результат калькулятора",
+    "Focus calculator expression": "Перейти до виразу калькулятора",
+    "Open the private browser": "Відкрити приватний браузер",
+    "Open a private browser window": "Відкрити приватне вікно браузера",
+    "Open Tor Browser (maximum privacy)": (
+        "Відкрити Tor Browser (максимальна приватність)"
+    ),
+    "Focus the browser search box": "Перейти до пошуку в браузері",
+    "New calendar event": "Нова подія календаря",
+    "Search calendar": "Пошук у календарі",
+    "Previous day/week": "Попередній день/тиждень",
+    "Next day/week": "Наступний день/тиждень",
+    "Undo calendar change": "Скасувати зміну календаря",
+    "Redo calendar change": "Повторити зміну календаря",
+    "Zoom calendar in": "Збільшити календар",
+    "Zoom calendar out": "Зменшити календар",
+    "Reset calendar zoom": "Скинути масштаб календаря",
+    "Calendar: Week page": "Календар: тиждень",
+    "Calendar: Day page": "Календар: день",
+    "Calendar: Habits page": "Календар: звички",
+    "Calendar: Statistics page": "Календар: статистика",
+    "Calendar: Goals page": "Календар: цілі",
+    "Calendar: Search page": "Календар: пошук",
+    "Start or resume the first timer": "Запустити або продовжити перший таймер",
+    "Toggle the first timer": "Перемкнути перший таймер",
+    "Pause all running timers": "Призупинити всі таймери",
+    "Resume all paused timers": "Продовжити всі таймери",
+    "Reset all timers": "Скинути всі таймери",
+    "Add a timer": "Додати таймер",
+    "Start or pause the stopwatch": "Запустити або призупинити секундомір",
+    "Start/resume the stopwatch": "Запустити/продовжити секундомір",
+    "Pause the stopwatch": "Призупинити секундомір",
+    "Record a stopwatch lap": "Записати коло секундоміра",
+    "Reset the stopwatch": "Скинути секундомір",
+    "New alarm…": "Новий будильник…",
+    "Stop the ringing alarm": "Вимкнути будильник, що дзвонить",
+    "Snooze the ringing alarm": "Відкласти будильник",
+    "Refresh Task Manager": "Оновити менеджер задач",
+    "Search running processes": "Пошук запущених процесів",
+    "Task Manager: Processes tab": "Менеджер задач: процеси",
+    "Task Manager: Performance tab": "Менеджер задач: продуктивність",
+    "Task Manager: Services tab": "Менеджер задач: служби",
+    "Task Manager: Startup tab": "Менеджер задач: автозапуск",
+    "Task Manager: Users tab": "Менеджер задач: користувачі",
+    "Task Manager: Details tab": "Менеджер задач: деталі",
+    "New note from template…": "Нова нотатка з шаблону…",
+    "Manage note templates…": "Керувати шаблонами нотаток…",
+    "Save note now": "Зберегти нотатку зараз",
+    "Bold selection": "Жирний текст",
+    "Italic selection": "Курсив",
+    "Insert Markdown link": "Вставити Markdown-посилання",
+    "Open version history…": "Відкрити історію версій…",
+    "Open Trash…": "Відкрити кошик…",
+    "Back up notes now": "Створити резервну копію нотаток",
+    "Export note as HTML…": "Експортувати нотатку в HTML…",
+    "Export note as PDF…": "Експортувати нотатку в PDF…",
+    "Export note as Markdown…": "Експортувати нотатку в Markdown…",
+    "Application": "Застосунок",
+    "Navigation": "Навігація",
 }
