@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **644 tests**.
+module are implemented. The full headless suite is green: **652 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -31,6 +31,9 @@ Installed commands:
 
 - `omnify` — the single Omnify process; owns timers, alarms and tray.
 - `omnify --module <id>` — open/switch an already running instance.
+- `omnify --module <id> --window` — open that module in its own window
+  (alias `--standalone`); the live module moves between windows instead of
+  being constructed twice.
 - `omnify-browser [URL...]` — standalone managed LibreWolf/Firefox.
 - `omnify-browser --tor [URL...]` — standalone Tor Browser.
 
@@ -76,6 +79,12 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
   editable shortcuts for every command (including module actions), global
   shortcuts that keep working while Omnify is hidden in the tray, and
   `omnify --command <id>` for desktop-environment bindings.
+- **Detachable module windows** — the sidebar header button, the command
+  palette (`Open <Module> in a separate window`) and
+  `omnify --module <id> --window` move a module's live view into its own
+  application window. The main stack keeps a Focus/Return placeholder, so
+  closing the window reattaches the same instance and timers never run
+  twice.
 - **Templates and quick capture** — built-in and user Markdown templates
   with `{{date}}`, `{{time}}`, `{{title}}`, `{{prompt:…}}`, `{{cursor}}`
   and related variables; a separate quick-capture window prefilled from
@@ -168,8 +177,9 @@ importer for the complete transfer.
 - `omnify/modules/__init__.py` is the module registry. A module implements
   `id`, `name`, `icon`, `description`, `group`, `build_view()`, and optional
   `on_show()`, `on_hide()`, `retranslate()`, `save_state()`.
-- Desktop module entries call `omnify --module <id>`; a second launch
-  activates the existing process so timers/alarms are never duplicated.
+- Desktop module entries call `omnify --module <id> --window`; a second
+  launch activates the existing process so timers/alarms are never
+  duplicated.
 
 ## Notes module
 
@@ -282,7 +292,8 @@ The Notes module is implemented:
   `current_note_title`, `capture_text`, `open_note`).
 - Tests: `tests/test_commands.py`, `tests/test_fuzzy.py`,
   `tests/test_module_commands.py`, `tests/test_templates.py`,
-  `tests/test_plugins.py`, `tests/test_ai_client.py`.
+  `tests/test_plugins.py`, `tests/test_ai_client.py`; launch parsing lives
+  in `omnify/core/launch.py` and is covered by `tests/test_launch.py`.
 - Calendar/browser polish tests: `tests/test_calendar_quick.py` covers the
   offline quick-add grammar and meeting-note Markdown;
   `tests/test_browser_reading.py` covers bangs, URL validation and the
@@ -309,11 +320,14 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **644 OK**
+- `python3 -m unittest discover -s tests` → **652 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the
   running instance
+- `omnify --module timer --window` opens a standalone window whose view is
+  the same live instance; closing it returns the module to the main window
+  and leaves timers running
 - `omnify --command timer.start` works through the same command bus as the
   palette, shortcuts and plugins
 - Settings → Plugins lists AI Assistant as disabled; enabling it registers

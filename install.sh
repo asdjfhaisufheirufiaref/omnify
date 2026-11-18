@@ -113,8 +113,8 @@ StartupWMClass=Tor Browser
 EOF
 
 # 5d. one application entry per tool.  Every entry asks the single running
-#     Omnify instance to switch to that module, so alarms/timers stay owned by
-#     one process and never ring twice.
+#     Omnify instance to open that module in its own window, so alarms/timers
+#     stay owned by one process and never ring twice.
 add_module_entry() {
     module_id=$1
     module_name=$2
@@ -127,7 +127,7 @@ Version=1.0
 Name=Omnify $module_name
 GenericName=Omnify module
 Comment=$module_comment
-Exec=$BIN_DIR/omnify --module $module_id
+Exec=$BIN_DIR/omnify --module $module_id --window
 TryExec=$BIN_DIR/omnify
 Icon=$module_icon
 Terminal=false

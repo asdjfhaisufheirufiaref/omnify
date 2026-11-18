@@ -1898,4 +1898,54 @@ TRANSLATIONS = {
     "Could not handle the browser selection": (
         "Не вдалося обробити виділення з браузера"
     ),
+
+    # Detachable module windows
+    "Open the current module in a separate window": (
+        "Відкрити поточний модуль в окремому вікні"
+    ),
+    "Open current module in a separate window": (
+        "Відкрити поточний модуль в окремому вікні"
+    ),
+    "Move the active module into its own window.": (
+        "Перемістити активний модуль у власне вікно."
+    ),
+    "Move this module into its own window; closing it returns the module "
+    "to the main window.": (
+        "Перемістити цей модуль у власне вікно; закриття повертає модуль "
+        "в головне вікно."
+    ),
+    "Open Home in a separate window": "Відкрити Головну в окремому вікні",
+    "Open Calculator in a separate window": (
+        "Відкрити Калькулятор в окремому вікні"
+    ),
+    "Open Browser in a separate window": "Відкрити Браузер в окремому вікні",
+    "Open Calendar in a separate window": "Відкрити Календар в окремому вікні",
+    "Open Timer in a separate window": "Відкрити Таймер в окремому вікні",
+    "Open Stopwatch in a separate window": (
+        "Відкрити Секундомір в окремому вікні"
+    ),
+    "Open Alarm clock in a separate window": (
+        "Відкрити Будильник в окремому вікні"
+    ),
+    "Open Task Manager in a separate window": (
+        "Відкрити Диспетчер задач в окремому вікні"
+    ),
+    "Open Notes in a separate window": "Відкрити Нотатки в окремому вікні",
+    "This module is open in a separate window.": (
+        "Цей модуль відкрито в окремому вікні."
+    ),
+    "Changes stay live because both windows share one Omnify process. Closing "
+    "that window returns the module here.": (
+        "Зміни залишаються живими, бо обидва вікна належать одному процесу "
+        "Omnify. Закриття того вікна повертає модуль сюди."
+    ),
+    "Focus window": "Показати вікно",
+    "Return to main window": "Повернути в головне вікно",
+    "Show the main Omnify window and keep this one open": (
+        "Показати головне вікно Omnify і залишити це вікно відкритим"
+    ),
+    "Move this module back into the main Omnify window": (
+        "Повернути цей модуль у головне вікно Omnify"
+    ),
+    "Nothing to detach": "Немає що відокремити",
 }

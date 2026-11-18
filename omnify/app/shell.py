@@ -42,6 +42,7 @@ from omnify.core.commands import (
     format_keys,
     normalize_combo,
 )
+from omnify.core.launch import parse_launch_args
 from omnify.core.logfile import log
 from omnify.core.plugins import PluginManager
 from omnify.core.theme import (
@@ -78,6 +79,7 @@ class OmnifyApp(Gtk.Application):
         self._current_id: Optional[str] = None
         self._initial_module: Optional[str] = initial_module
         self._initial_command: Optional[str] = None
+        self._initial_standalone = False
         self._status_timeout_id: Optional[int] = None
         # Populated by :meth:`_build_window`, which runs before any of the
         # callbacks below can fire.
@@ -97,6 +99,14 @@ class OmnifyApp(Gtk.Application):
         self._paned: Optional[Gtk.Paned] = None
         self._stack: Optional[Gtk.Stack] = None
         self._status_label: Optional[Gtk.Label] = None
+        # Standalone module windows share the live module instance, so timer
+        # and stopwatch state is never duplicated.  The module's view moves
+        # between the main stack and its window; the original stack page keeps
+        # a placeholder with Focus/Attach buttons.
+        self._module_hosts: Dict[str, Gtk.ScrolledWindow] = {}
+        self._module_windows: Dict[str, Gtk.ApplicationWindow] = {}
+        self._module_window_scrollers: Dict[str, Gtk.ScrolledWindow] = {}
+        self._standalone_status: Dict[str, Gtk.Label] = {}
         # Background surfaces (set up in do_activate, see
         # :meth:`_start_tray_and_ticker`).
         self._sni = None  # StatusNotifierItem (system tray)
@@ -125,49 +135,50 @@ class OmnifyApp(Gtk.Application):
     # Gtk.Application
     # ------------------------------------------------------------------
     def do_command_line(self, command_line) -> int:
-        """Handle ``--module`` and ``--command`` in the running instance.
+        """Handle ``--module``, ``--window`` and ``--command``.
 
         ``--command timer.start`` is intentionally the same command bus the
         palette, shortcuts and plugins use.  It lets a desktop environment
         shortcut start a timer even when the user chose a system-wide key
         combination that Omnify cannot register itself.
+
+        ``--window`` (alias ``--standalone``) opens the requested module in
+        its own window instead of switching the main Omnify window.  It is
+        what the per-module application-menu entries use.
         """
-        args = list(command_line.get_arguments() or [])
-        module_id: Optional[str] = None
-        command_id: Optional[str] = None
-        index = 0
-        while index < len(args):
-            arg = str(args[index])
-            if arg == "--module" and index + 1 < len(args):
-                module_id = str(args[index + 1])
-                index += 2
-                continue
-            if arg.startswith("--module="):
-                module_id = arg.split("=", 1)[1]
-            if arg == "--command" and index + 1 < len(args):
-                command_id = str(args[index + 1])
-                index += 2
-                continue
-            if arg.startswith("--command="):
-                command_id = arg.split("=", 1)[1]
-            index += 1
+        request = parse_launch_args(command_line.get_arguments() or [])
+        module_id = request.module
+        command_id = request.command
+        standalone = request.standalone
         known = {module.id for module in ALL_MODULES} | {"settings"}
-        if module_id in known:
-            self._initial_module = module_id
+        requested = module_id if module_id in known else None
+        if requested is not None:
+            self._initial_module = requested
+        if standalone and requested is not None:
+            self._initial_standalone = True
         if command_id:
             self._initial_command = command_id
         if self._window is None:
             self.activate()
+            if standalone:
+                target = requested or self._initial_module
+                if target in known:
+                    self._detach_module(target)
             if command_id:
                 GLib.idle_add(self._run_initial_command)
         else:
-            self._window.present()
-            if self._initial_module is not None:
-                self._switch_to(self._initial_module)
+            if standalone:
+                target = requested or self._current_id
+                if target in known:
+                    self._detach_module(target)
+            else:
+                self._window.present()
+                if self._initial_module is not None:
+                    # _switch_to also brings a detached module's own window
+                    # to the front, so the CLI behaves the same either way.
+                    self._switch_to(self._initial_module)
             if command_id:
                 GLib.idle_add(self._run_initial_command)
-            elif self._current_id is not None:
-                self._switch_to(self._current_id)
         return 0
 
     def _run_initial_command(self) -> bool:
@@ -181,9 +192,16 @@ class OmnifyApp(Gtk.Application):
         """Create the main window on first activation, then present it."""
         Gtk.Window.set_default_icon_name("io.github.omnify")
         if self._window is None:
+            initial_standalone = self._initial_standalone
+            self._initial_standalone = False
             self._window = self._build_window()
             i18n.translate_widget_tree(self._window)
             self._start_tray_and_ticker()
+            if initial_standalone:
+                # A per-module launcher starts with only its own window.  The
+                # main window still exists (hidden) so the tray, timers and
+                # global shortcuts keep the normal single-process behaviour.
+                return
             self._window.present()
             # Wayland ignores a maximize request made before the surface is
             # mapped.  Queue it for the next main-loop iteration instead.
@@ -444,6 +462,9 @@ class OmnifyApp(Gtk.Application):
     # ------------------------------------------------------------------
     def open_module(self, module_id: str) -> None:
         """Navigate to *module_id*; wired into ``ModuleContext.open_module``."""
+        if self._module_windows.get(module_id) is not None:
+            self._switch_to(module_id)
+            return
         if module_id == "settings":
             self._switch_to("settings")
             self._clear_nav_selection()
@@ -511,6 +532,13 @@ class OmnifyApp(Gtk.Application):
                 category="Application",
             ),
             Command(
+                "app.detach_module",
+                "Open current module in a separate window",
+                self._detach_current_module,
+                category="Application",
+                description="Move the active module into its own window.",
+            ),
+            Command(
                 "app.plugins",
                 "Plugins and AI settings…",
                 lambda: self._switch_to("settings"),
@@ -526,6 +554,18 @@ class OmnifyApp(Gtk.Application):
                     lambda module_id=module_cls.id: self._switch_to(module_id),
                     category="Navigation",
                     description=module_cls.description,
+                )
+            )
+            commands.append(
+                Command(
+                    f"app.window.{module_cls.id}",
+                    f"Open {module_cls.name} in a separate window",
+                    lambda module_id=module_cls.id: self._detach_module(module_id),
+                    category="Navigation",
+                    description=(
+                        "Move this module into its own window; closing it "
+                        "returns the module to the main window."
+                    ),
                 )
             )
         commands.append(
@@ -612,14 +652,230 @@ class OmnifyApp(Gtk.Application):
         if self._window is not None:
             self._window.hide()
 
+    # ------------------------------------------------------------------
+    # Detachable module windows
+    # ------------------------------------------------------------------
+    def _module_source_name(self, module_id: str) -> str:
+        module = self._modules.get(module_id)
+        return module.name if module is not None else "Settings"
+
+    def _module_display_name(self, module_id: str) -> str:
+        return i18n.tr(self._module_source_name(module_id))
+
+    def _module_content(self, module_id: str):
+        module = self._modules.get(module_id)
+        if module is None:
+            return self._settings_page if module_id == "settings" else None
+        return module.view
+
+    def _build_module_placeholder(self, module_id: str) -> Gtk.Widget:
+        """A stack page shown while the module lives in its own window."""
+        placeholder = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12
+        )
+        placeholder.set_halign(Gtk.Align.CENTER)
+        placeholder.set_valign(Gtk.Align.CENTER)
+        placeholder.set_margin_top(24)
+        placeholder.set_margin_bottom(24)
+        placeholder.set_margin_start(24)
+        placeholder.set_margin_end(24)
+
+        icon = Gtk.Image.new_from_icon_name("window-new-symbolic")
+        icon.set_pixel_size(48)
+        icon.get_style_context().add_class("omnify-dim")
+        placeholder.append(icon)
+
+        title = Gtk.Label(label=self._module_source_name(module_id))
+        title.get_style_context().add_class("omnify-card-title")
+        placeholder.append(title)
+
+        message = Gtk.Label(
+            label="This module is open in a separate window."
+        )
+        message.set_wrap(True)
+        message.set_justify(Gtk.Justification.CENTER)
+        placeholder.append(message)
+
+        hint = Gtk.Label(
+            label=(
+                "Changes stay live because both windows share one Omnify "
+                "process. Closing that window returns the module here."
+            )
+        )
+        hint.set_wrap(True)
+        hint.set_justify(Gtk.Justification.CENTER)
+        hint.get_style_context().add_class("omnify-dim")
+        placeholder.append(hint)
+
+        buttons = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8
+        )
+        buttons.set_halign(Gtk.Align.CENTER)
+        focus = Gtk.Button(label="Focus window")
+        focus.connect(
+            "clicked",
+            lambda _button: self._present_module_window(module_id),
+        )
+        buttons.append(focus)
+        attach = Gtk.Button(label="Return to main window")
+        attach.connect(
+            "clicked", lambda _button: self._attach_module(module_id)
+        )
+        buttons.append(attach)
+        placeholder.append(buttons)
+        i18n.translate_widget_tree(placeholder)
+        return placeholder
+
+    def _detach_current_module(self) -> bool:
+        return self._detach_module(self._current_id or "")
+
+    def _on_detach_clicked(self, _button: Gtk.Button) -> None:
+        if not self._detach_current_module():
+            self._notify("Nothing to detach")
+
+    def _detach_module(self, module_id: str) -> bool:
+        """Move a module's live view into its own application window."""
+        if not module_id:
+            return False
+        existing = self._module_windows.get(module_id)
+        if existing is not None:
+            self._present_module_window(module_id)
+            return True
+        host = self._module_hosts.get(module_id)
+        content = self._module_content(module_id)
+        if host is None or content is None:
+            return False
+
+        name = self._module_display_name(module_id)
+        placeholder = self._build_module_placeholder(module_id)
+        # Unparent the live view before adding it to the standalone scroller.
+        host.set_child(None)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_propagate_natural_width(False)
+        scroller.set_propagate_natural_height(False)
+        scroller.set_hexpand(True)
+        scroller.set_vexpand(True)
+        scroller.set_child(content)
+
+        window = Gtk.ApplicationWindow(application=self)
+        window.set_title(f"{name} — Omnify")
+        window.set_icon_name("io.github.omnify")
+        window.set_default_size(1100, 760)
+
+        header = Gtk.HeaderBar()
+        header_title = Gtk.Label(label=self._module_source_name(module_id))
+        header_title.get_style_context().add_class("omnify-card-title")
+        header.set_title_widget(header_title)
+        home = Gtk.Button(icon_name="go-home-symbolic")
+        home.set_tooltip_text(
+            "Show the main Omnify window and keep this one open"
+        )
+        home.connect("clicked", lambda _button: self._show_main_window())
+        header.pack_start(home)
+        attach = Gtk.Button(label="Return to main window")
+        attach.set_tooltip_text(
+            "Move this module back into the main Omnify window"
+        )
+        attach.connect(
+            "clicked", lambda _button: self._attach_module(module_id)
+        )
+        header.pack_end(attach)
+        window.set_titlebar(header)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        body.append(scroller)
+        body.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        status = Gtk.Label(label="", xalign=0.0)
+        status.get_style_context().add_class("omnify-dim")
+        status.set_margin_top(4)
+        status.set_margin_bottom(6)
+        status.set_margin_start(12)
+        status.set_margin_end(12)
+        body.append(status)
+        window.set_child(body)
+
+        key_controller = Gtk.EventControllerKey()
+        key_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        key_controller.connect(
+            "key-pressed",
+            lambda _controller, keyval, _keycode, state: (
+                self._dispatch_shortcut(
+                    keyval,
+                    state,
+                    "app" if module_id == "settings" else module_id,
+                )
+            ),
+        )
+        window.add_controller(key_controller)
+        window.connect(
+            "close-request",
+            lambda _window: self._on_module_window_close_request(module_id),
+        )
+
+        self._module_windows[module_id] = window
+        self._module_window_scrollers[module_id] = scroller
+        self._standalone_status[module_id] = status
+        host.set_child(placeholder)
+
+        module = self._modules.get(module_id)
+        if module is not None:
+            module.on_show()
+            module.retranslate()
+        i18n.translate_widget_tree(window)
+        window.present()
+        return True
+
+    def _attach_module(self, module_id: str) -> bool:
+        """Return a detached module to its stack page and close the window."""
+        window = self._module_windows.pop(module_id, None)
+        if window is None:
+            return False
+        scroller = self._module_window_scrollers.pop(module_id, None)
+        self._standalone_status.pop(module_id, None)
+        host = self._module_hosts.get(module_id)
+        content = self._module_content(module_id)
+        # Drop focus while the live view still exists; destroying a window
+        # whose focus sits inside a nested Paned logs a GTK warning.
+        window.hide()
+        window.set_focus(None)
+        if scroller is not None:
+            scroller.set_child(None)
+        if host is not None and content is not None:
+            host.set_child(content)
+        window.set_child(None)
+        window.destroy()
+
+        if self._window is not None:
+            self._window.present()
+        self._switch_to(module_id)
+        return True
+
+    def _present_module_window(self, module_id: str) -> bool:
+        window = self._module_windows.get(module_id)
+        if window is None:
+            return False
+        window.present()
+        window.grab_focus()
+        return True
+
+    def _on_module_window_close_request(self, module_id: str) -> bool:
+        self._attach_module(module_id)
+        return True
+
     def _on_window_key_pressed(self, _controller, keyval, _keycode, state) -> bool:
         """Dispatch a keypress through the editable shortcut map."""
+        return self._dispatch_shortcut(
+            keyval, state, self._current_id or "app"
+        )
+
+    def _dispatch_shortcut(self, keyval, state, scope: str) -> bool:
         if self.ctx is None or self.ctx.suspend_shortcuts:
             return False
         combo = key_event_combo(keyval, state)
         if not combo or self._shortcuts is None:
             return False
-        scope = self._current_id or "app"
         matches = self._shortcuts.find_bindings(combo, scope=scope)
         for binding in matches:
             if self.execute_command(binding.command.id):
@@ -808,12 +1064,24 @@ class OmnifyApp(Gtk.Application):
         sidebar.set_margin_start(8)
         sidebar.set_margin_end(8)
 
+        header_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=6
+        )
+        header_row.set_margin_top(4)
+        header_row.set_margin_start(8)
+        header_row.set_margin_end(8)
         header = Gtk.Label(label="Omnify", xalign=0.0)
         header.get_style_context().add_class("omnify-card-title")
-        header.set_margin_top(4)
-        header.set_margin_start(8)
-        header.set_margin_end(8)
-        sidebar.append(header)
+        header.set_hexpand(True)
+        header_row.append(header)
+        detach_button = Gtk.Button(icon_name="window-new-symbolic")
+        detach_button.set_tooltip_text(
+            "Open the current module in a separate window"
+        )
+        detach_button.get_style_context().add_class("flat")
+        detach_button.connect("clicked", self._on_detach_clicked)
+        header_row.append(detach_button)
+        sidebar.append(header_row)
 
         # One listbox per group with a title label above it (GTK 4 on this
         # system has no ListBoxSection/ListBoxFilterSection class).
@@ -959,6 +1227,7 @@ class OmnifyApp(Gtk.Application):
             scroller.set_hexpand(True)
             scroller.set_vexpand(True)
             scroller.set_child(module.view)
+            self._module_hosts[module.id] = scroller
             i18n.translate_widget_tree(module.view)
             try:
                 self._commands.register_many(module.commands())
@@ -979,8 +1248,18 @@ class OmnifyApp(Gtk.Application):
 
         self._settings_page = self._build_settings_page()
         i18n.translate_widget_tree(self._settings_page)
+        settings_scroller = Gtk.ScrolledWindow()
+        settings_scroller.set_policy(
+            Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC
+        )
+        settings_scroller.set_propagate_natural_width(False)
+        settings_scroller.set_propagate_natural_height(False)
+        settings_scroller.set_hexpand(True)
+        settings_scroller.set_vexpand(True)
+        settings_scroller.set_child(self._settings_page)
+        self._module_hosts["settings"] = settings_scroller
         stack.add_titled(
-            self._settings_page, "settings", i18n.tr("Settings")
+            settings_scroller, "settings", i18n.tr("Settings")
         )
         return stack
 
@@ -1582,6 +1861,11 @@ class OmnifyApp(Gtk.Application):
             return
         self._refresh_settings_combos()
         i18n.translate_widget_tree(self._window)
+        for module_id, window in self._module_windows.items():
+            window.set_title(
+                f"{self._module_display_name(module_id)} — Omnify"
+            )
+            i18n.translate_widget_tree(window)
         for module in self._modules.values():
             module.retranslate()
         if self._backup_panel is not None:
@@ -1637,10 +1921,15 @@ class OmnifyApp(Gtk.Application):
             panel = getattr(self, "_backup_panel", None)
             if panel is not None:
                 panel.refresh()
+
+        detached = self._module_windows.get(module_id) is not None
         if self._current_id == module_id:
+            if detached:
+                self._present_module_window(module_id)
             return
-        if self._current_id is not None:
-            previous = self._modules.get(self._current_id)
+        previous_id = self._current_id
+        if previous_id is not None and previous_id not in self._module_windows:
+            previous = self._modules.get(previous_id)
             if previous is not None:
                 previous.on_hide()
         self._current_id = module_id
@@ -1654,23 +1943,36 @@ class OmnifyApp(Gtk.Application):
         if module is not None:
             module.on_show()
             module.retranslate()
+        if detached:
+            # The stack shows the placeholder; the live view is in its own
+            # window, which should come to the front with the module.
+            self._present_module_window(module_id)
 
     # ------------------------------------------------------------------
     # Status bar
     # ------------------------------------------------------------------
     def _notify(self, message: str) -> None:
         """Status-bar sink for ``ModuleContext.notify`` (auto-clears)."""
-        if self._window is None or self._status_label is None:
+        if self._window is None:
             return
         message = i18n.tr(message)
         if self._status_timeout_id is not None:
             GLib.source_remove(self._status_timeout_id)
             self._status_timeout_id = None
-        self._status_label.set_label(message)
-        self._status_timeout_id = GLib.timeout_add(_STATUS_CLEAR_MS, self._clear_status)
+        labels = [self._status_label]
+        labels.extend(self._standalone_status.values())
+        for label in labels:
+            if label is not None:
+                label.set_label(message)
+        self._status_timeout_id = GLib.timeout_add(
+            _STATUS_CLEAR_MS, self._clear_status
+        )
 
     def _clear_status(self) -> bool:
-        if self._status_label is not None:
-            self._status_label.set_label("")
+        labels = [self._status_label]
+        labels.extend(self._standalone_status.values())
+        for label in labels:
+            if label is not None:
+                label.set_label("")
         self._status_timeout_id = None
         return False
