@@ -23,10 +23,14 @@ import tempfile
 import threading
 import time
 import urllib.request
+import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus, unquote, urlparse
+
+from ..core.i18n import tr
 
 #: Default search endpoint.  A template must contain ``{query}``.
 DEFAULT_SEARCH_URL = "https://duckduckgo.com/?q={query}"
@@ -36,6 +40,40 @@ SEARCH_ENGINES: Dict[str, str] = {
     "Startpage": "https://www.startpage.com/sp/search?query={query}",
     "Wikipedia": "https://en.wikipedia.org/w/index.php?search={query}",
 }
+
+#: Search bangs for the address bar (``!w Python``).  Values are
+#: ``(human label, URL template)``.  These are plain redirects to the
+#: service's own search page: Omnify never sees the query and no account or
+#: API key is involved.
+SEARCH_BANGS: Dict[str, Tuple[str, str]] = {
+    "ddg": ("DuckDuckGo", DEFAULT_SEARCH_URL),
+    "w": ("Wikipedia", "https://en.wikipedia.org/w/index.php?search={query}"),
+    "uk": ("Ukrainian Wikipedia", "https://uk.wikipedia.org/w/index.php?search={query}"),
+    "yt": ("YouTube", "https://www.youtube.com/results?search_query={query}"),
+    "gh": ("GitHub", "https://github.com/search?q={query}&type=repositories"),
+    "so": ("Stack Overflow", "https://stackoverflow.com/search?q={query}"),
+    "npm": ("npm", "https://www.npmjs.com/search?q={query}"),
+    "pypi": ("PyPI", "https://pypi.org/search/?q={query}"),
+    "aur": ("Arch User Repository", "https://aur.archlinux.org/packages?K={query}"),
+    "maps": ("OpenStreetMap", "https://www.openstreetmap.org/search?query={query}"),
+    "reddit": ("Reddit", "https://www.reddit.com/search/?q={query}"),
+    "dict": ("Wiktionary", "https://en.wiktionary.org/w/index.php?search={query}"),
+    "img": ("DuckDuckGo Images", "https://duckduckgo.com/?q={query}&iax=images&ia=images"),
+    "g": ("Google", "https://www.google.com/search?q={query}"),
+}
+
+#: Alternative spellings that resolve to a canonical bang.
+BANG_ALIASES: Dict[str, str] = {
+    "wiki": "w",
+    "wikipedia": "w",
+    "youtube": "yt",
+    "github": "gh",
+    "stackoverflow": "so",
+    "map": "maps",
+}
+
+#: Storage key used by :class:`ReadingList`.
+READING_KEY = "browser_reading"
 
 #: Browser discovery order.  Relative paths are expanded from ``$HOME``.
 BROWSER_CANDIDATES: Tuple[Tuple[str, str, Tuple[str, ...], Tuple[str, ...]], ...] = (
@@ -987,19 +1025,47 @@ def launch_browser(
     return command
 
 
+def resolve_bang(text: str) -> Optional[str]:
+    """Resolve a leading ``!bang query`` into a search URL.
+
+    Returns ``None`` when *text* is not a bang.  Unknown names and a missing
+    query raise :class:`ValueError` so the UI can explain what happened
+    instead of silently searching for the literal exclamation mark.
+    """
+    value = (text or "").strip()
+    if not value.startswith("!"):
+        return None
+    match = re.match(r"^!([a-z0-9]+)(?:\s+(.*))?$", value, re.IGNORECASE)
+    if match is None:
+        raise ValueError(tr("Unknown search shortcut"))
+    name = match.group(1).lower()
+    query = (match.group(2) or "").strip()
+    canonical = BANG_ALIASES.get(name, name)
+    if canonical not in SEARCH_BANGS:
+        raise ValueError(tr("Unknown search shortcut !{name}", name=name))
+    if not query:
+        raise ValueError(tr("Add a query after !{name}", name=name))
+    _label, template = SEARCH_BANGS[canonical]
+    return template.format(query=quote_plus(query))
+
+
 def url_from_input(text: str, search_url: str = DEFAULT_SEARCH_URL) -> str:
-    """Turn a URL or search phrase into a safe URL.
+    """Turn a URL, search phrase or ``!bang`` into a safe URL.
 
     Explicit ``javascript:``/``data:`` URLs are rejected; a bare hostname gets
-    ``https://``; anything else is sent to the configured search engine.
+    ``https://``; a leading bang goes to that site's own search page; anything
+    else is sent to the configured search engine.
     """
     value = (text or "").strip()
     if not value:
         return ""
+    bang = resolve_bang(value)
+    if bang is not None:
+        return bang
     template = search_url if "{query}" in search_url else DEFAULT_SEARCH_URL
     lowered = value.lower()
     if lowered.startswith(("javascript:", "data:", "vbscript:")):
-        raise ValueError("Unsafe URL scheme")
+        raise ValueError(tr("Unsafe URL scheme"))
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https", "file", "about", "ftp", "mailto"}:
         return value
@@ -1009,6 +1075,107 @@ def url_from_input(text: str, search_url: str = DEFAULT_SEARCH_URL) -> str:
     if " " not in value and ("." in value or lowered.startswith(("localhost", "127.", "[::1]"))):
         return "https://" + value
     return template.format(query=quote_plus(value))
+
+
+def normalize_reading_url(value: str) -> str:
+    """Validate and normalise a URL for the local reading list."""
+    text = (value or "").strip()
+    if not text:
+        raise ValueError(tr("A reading-list entry needs a URL"))
+    lowered = text.lower()
+    if lowered.startswith(("javascript:", "data:", "vbscript:")):
+        raise ValueError(tr("Unsafe URL scheme"))
+    parsed = urlparse(text)
+    if parsed.scheme:
+        if parsed.scheme not in {"http", "https", "file"}:
+            raise ValueError(tr("Only web addresses can be saved for later"))
+        if parsed.scheme in {"http", "https"} and not parsed.netloc:
+            raise ValueError(tr("Only web addresses can be saved for later"))
+        return text
+    if " " in text or "." not in text:
+        raise ValueError(tr("Only web addresses can be saved for later"))
+    return "https://" + text
+
+
+def title_from_url(url: str) -> str:
+    """A readable fallback title derived from a URL's host and last segment."""
+    parsed = urlparse(url)
+    host = parsed.netloc or parsed.path or url
+    segment = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]).strip()
+    if segment and segment not in {"index.html", "index.htm"}:
+        return f"{segment} · {host}"[:120]
+    return host[:120]
+
+
+class ReadingList:
+    """A small, local "save for later" list backed by Omnify storage.
+
+    No browser history or remote sync is involved.  Entries are plain dicts
+    with ``id``, ``url``, ``title`` and ``added_at``; the newest entry comes
+    first and duplicate URLs are moved to the top instead of copied.
+    """
+
+    def __init__(self, storage) -> None:
+        self._storage = storage
+
+    def all(self) -> List[Dict[str, str]]:
+        data = self._storage.load(READING_KEY, [])
+        if not isinstance(data, list):
+            return []
+        return [
+            entry
+            for entry in data
+            if isinstance(entry, dict) and entry.get("id") and entry.get("url")
+        ]
+
+    def has(self, url: str) -> bool:
+        try:
+            target = normalize_reading_url(url)
+        except ValueError:
+            return False
+        return any(entry.get("url") == target for entry in self.all())
+
+    def add(
+        self,
+        url: str,
+        title: str = "",
+        *,
+        now: Optional[str] = None,
+    ) -> Dict[str, str]:
+        target = normalize_reading_url(url)
+        clean_title = str(title or "").strip() or title_from_url(target)
+        timestamp = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
+        entries = self.all()
+        for index, entry in enumerate(entries):
+            if entry.get("url") != target:
+                continue
+            if str(title or "").strip():
+                entry["title"] = clean_title
+            entry["added_at"] = timestamp
+            entries.pop(index)
+            entries.insert(0, entry)
+            self._storage.save(READING_KEY, entries)
+            return entry
+        entry = {
+            "id": uuid.uuid4().hex[:10],
+            "url": target,
+            "title": clean_title,
+            "added_at": timestamp,
+        }
+        entries.insert(0, entry)
+        self._storage.save(READING_KEY, entries)
+        return entry
+
+    def remove(self, entry_id: str) -> bool:
+        entries = self.all()
+        remaining = [entry for entry in entries if entry.get("id") != entry_id]
+        if len(remaining) == len(entries):
+            return False
+        self._storage.save(READING_KEY, remaining)
+        return True
+
+    def clear(self) -> None:
+        self._storage.save(READING_KEY, [])
 
 
 def quick_link_url(name: str) -> str:

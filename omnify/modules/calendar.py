@@ -42,6 +42,7 @@ from ..core.commands import Command
 from ..core.i18n import tr
 from ..core.module_context import BaseModule
 from ..core.theme import CATEGORY_COLORS, category_color
+from .calendar_quick import meeting_note_markdown, parse_quick_event
 
 STORAGE_KEY = "calendar"
 CATEGORY_KEY = "calendar_categories"
@@ -60,6 +61,8 @@ _UPDATE_FIELDS = (
     "end_time",
     "title",
     "notes",
+    "location",
+    "attendees",
     "category",
     "recurrence",
     "habit",
@@ -585,6 +588,8 @@ class EventStore:
         notes: str = "",
         *,
         end_time=None,
+        location: str = "",
+        attendees: str = "",
         category: str = "",
         recurrence=None,
         habit: bool = False,
@@ -604,6 +609,8 @@ class EventStore:
             "end_time": end_time,
             "title": title.strip(),
             "notes": notes or "",
+            "location": str(location or "").strip(),
+            "attendees": str(attendees or "").strip(),
             "category": str(category or ""),
             "recurrence": rec,
             "habit": bool(habit),
@@ -648,6 +655,10 @@ class EventStore:
             fields["reminder"] = _normalize_reminder(fields["reminder"])
         if "title" in fields and isinstance(fields["title"], str):
             fields["title"] = fields["title"].strip()
+        if "location" in fields:
+            fields["location"] = str(fields["location"] or "").strip()
+        if "attendees" in fields:
+            fields["attendees"] = str(fields["attendees"] or "").strip()
         target.update(fields)
         _validate_event(
             target["date"], target.get("time"), target["title"],
@@ -1151,6 +1162,8 @@ class TemplateStore:
             "time": time,
             "end_time": end_time,
             "notes": str(fields.get("notes") or ""),
+            "location": str(fields.get("location") or "").strip(),
+            "attendees": str(fields.get("attendees") or "").strip(),
             "category": str(fields.get("category") or ""),
             "recurrence": normalize_recurrence(fields.get("recurrence")),
             "habit": bool(fields.get("habit")),
@@ -1383,6 +1396,14 @@ class CalendarModule(BaseModule):
                 scope="calendar",
             ),
             Command(
+                "calendar.quick_add",
+                "Quick add from a phrase",
+                run(self._focus_quick_add),
+                category="Calendar",
+                default_keys=("ctrl+shift+a",),
+                scope="calendar",
+            ),
+            Command(
                 "calendar.previous",
                 "Previous day/week",
                 run(self._navigate, -1),
@@ -1482,6 +1503,8 @@ class CalendarModule(BaseModule):
         notes: str = "",
         *,
         end_time: Optional[str] = None,
+        location: str = "",
+        attendees: str = "",
         category: str = "",
         recurrence=None,
         habit: bool = False,
@@ -1505,6 +1528,8 @@ class CalendarModule(BaseModule):
             title,
             notes,
             end_time=end_time,
+            location=location,
+            attendees=attendees,
             category=category,
             recurrence=recurrence,
             habit=habit,
@@ -1620,6 +1645,27 @@ class CalendarModule(BaseModule):
         )
         header.append(add_habit)
         root.append(header)
+
+        quick_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._quick_entry = Gtk.Entry()
+        self._quick_entry.set_hexpand(True)
+        self._quick_entry.set_placeholder_text(
+            "Quick add: Lunch tomorrow at 13:00"
+        )
+        self._quick_entry.set_tooltip_text(
+            "Understands today/tomorrow, weekday names, 2026-11-20, "
+            "20.11.2026, month names, 13:00-14:30, 9am and durations "
+            "such as “for 30 minutes”. English and Ukrainian are both "
+            "supported."
+        )
+        self._quick_entry.connect("activate", self._on_quick_add)
+        quick_row.append(self._quick_entry)
+        quick_button = Gtk.Button(label="+ Add")
+        quick_button.get_style_context().add_class("omnify-accent")
+        quick_button.set_tooltip_text("Add the event from the quick-add line")
+        quick_button.connect("clicked", self._on_quick_add)
+        quick_row.append(quick_button)
+        root.append(quick_row)
 
         nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         prev_button = Gtk.Button(label="‹")
@@ -1969,6 +2015,62 @@ class CalendarModule(BaseModule):
         self._search_entry.select_region(0, -1)
         return False
 
+    def _focus_quick_add(self) -> bool:
+        entry = getattr(self, "_quick_entry", None)
+        if entry is None:
+            return False
+        entry.grab_focus()
+        entry.select_region(0, -1)
+        return True
+
+    def _on_quick_add(self, _widget=None) -> None:
+        """Parse the quick-add line and create the event immediately."""
+        entry = getattr(self, "_quick_entry", None)
+        if (
+            entry is None
+            or getattr(self, "_store", None) is None
+            or getattr(self, "_stack", None) is None
+        ):
+            return
+        try:
+            parsed = parse_quick_event(entry.get_text())
+        except ValueError as exc:
+            self.ctx.notify(tr(str(exc)))
+            return
+        title = parsed.title or tr("New event")
+        before = self._snapshot()
+        try:
+            event = self._store.add(
+                parsed.date_iso,
+                parsed.time,
+                title,
+                end_time=parsed.end_time,
+            )
+        except ValueError as exc:
+            self.ctx.notify(tr(str(exc)))
+            return
+        self._record_history("Quick add event", before)
+        entry.set_text("")
+        target = date.fromisoformat(parsed.date_iso)
+        self._week_start = week_start(target, self._prefs["week_start"])
+        self._habit_week = self._week_start
+        self._select_month_day(target)
+        self._stack.set_visible_child_name("week")
+        self._refresh_current()
+        event_time = (
+            f"{parsed.time}–{parsed.end_time}"
+            if parsed.time and parsed.end_time
+            else (parsed.time or tr("All day"))
+        )
+        self.ctx.notify(
+            tr(
+                "Added: {title} · {date} · {time}",
+                title=event["title"],
+                date=parsed.date_iso,
+                time=event_time,
+            )
+        )
+
     _ZOOM_STEPS = (24, 32, 40, 48, 56, 64, 76, 88, 104, 120, 140, 160)
 
     def _zoom_hour_height(self, direction: int) -> None:
@@ -2129,6 +2231,7 @@ class CalendarModule(BaseModule):
         for keys, action in (
             ("Ctrl + N", "New event"),
             ("Ctrl + Shift + N", "New habit"),
+            ("Ctrl + Shift + A", "Quick add from a phrase"),
             ("Ctrl + F", "Search and filters"),
             ("Ctrl + T", "Jump to today"),
             ("Ctrl + ← / →", "Previous / next week or day"),
@@ -4350,6 +4453,17 @@ class CalendarModule(BaseModule):
             bool(data.get("habit")) or (bool(habit) and not editing)
         )
 
+        location_entry = Gtk.Entry()
+        location_entry.set_placeholder_text(
+            "Room, address or video link (optional)"
+        )
+        location_entry.set_text(data.get("location", "") or "")
+        attendees_entry = Gtk.Entry()
+        attendees_entry.set_placeholder_text(
+            "Names separated by commas (optional)"
+        )
+        attendees_entry.set_text(data.get("attendees", "") or "")
+
         details.attach(dim_label("Title"), 0, 0, 1, 1)
         details.attach(title_entry, 1, 0, 2, 1)
         details.attach(dim_label("Date"), 0, 1, 1, 1)
@@ -4370,6 +4484,10 @@ class CalendarModule(BaseModule):
         habit_hint.get_style_context().add_class("omnify-dim")
         habit_row.append(habit_hint)
         details.attach(habit_row, 1, 5, 2, 1)
+        details.attach(dim_label("Location"), 0, 6, 1, 1)
+        details.attach(location_entry, 1, 6, 2, 1)
+        details.attach(dim_label("Attendees"), 0, 7, 1, 1)
+        details.attach(attendees_entry, 1, 7, 2, 1)
         form.append(details)
         sync_time()
 
@@ -4514,6 +4632,11 @@ class CalendarModule(BaseModule):
         if editing:
             template_button = Gtk.Button(label="Save as template")
             duplicate_button = Gtk.Button(label="Duplicate")
+            meeting_button = Gtk.Button(label="Meeting note")
+            meeting_button.set_tooltip_text(
+                "Create a Markdown note with the agenda, attendees and "
+                "action items"
+            )
             recurring = bool(editing.get("recurrence"))
             if recurring:
                 delete_button = Gtk.MenuButton(label="Delete")
@@ -4546,6 +4669,7 @@ class CalendarModule(BaseModule):
             delete_button.get_style_context().add_class("omnify-danger")
             buttons.append(template_button)
             buttons.append(duplicate_button)
+            buttons.append(meeting_button)
             buttons.append(delete_button)
         outer.append(buttons)
         win.set_child(outer)
@@ -4614,6 +4738,8 @@ class CalendarModule(BaseModule):
                 "end_time": end_value,
                 "title": title_entry.get_text().strip(),
                 "notes": text,
+                "location": location_entry.get_text().strip(),
+                "attendees": attendees_entry.get_text().strip(),
                 "category": category_combo.get_active_id() or "",
                 "recurrence": recurrence,
                 "habit": habit_switch.get_active(),
@@ -4639,6 +4765,8 @@ class CalendarModule(BaseModule):
                         fields["title"],
                         fields["notes"],
                         end_time=fields["end_time"],
+                        location=fields["location"],
+                        attendees=fields["attendees"],
                         category=fields["category"],
                         recurrence=fields["recurrence"],
                         habit=fields["habit"],
@@ -4675,6 +4803,8 @@ class CalendarModule(BaseModule):
                     f"{fields['title']} (copy)",
                     fields["notes"],
                     end_time=fields["end_time"],
+                    location=fields["location"],
+                    attendees=fields["attendees"],
                     category=fields["category"],
                     recurrence=fields["recurrence"],
                     habit=False,
@@ -4689,6 +4819,42 @@ class CalendarModule(BaseModule):
             self._close_event_dialog()
             self._refresh_current()
             self.ctx.notify(f"Duplicated: {copy['title']}")
+
+        def on_meeting_note(_button) -> None:
+            if not editing:
+                return
+            try:
+                fields = collect_fields()
+            except ValueError as exc:
+                self.ctx.notify(str(exc))
+                return
+            category_name = ""
+            category_id = fields.get("category") or ""
+            if category_id:
+                category = self._cats.get(category_id)
+                if category is not None:
+                    category_name = str(category.get("name") or "")
+            event_data = dict(editing)
+            event_data.update(fields)
+            note_title, contents = meeting_note_markdown(
+                event_data, category_name=category_name
+            )
+            notes = self.ctx.get_module("notes")
+            if notes is None or not hasattr(notes, "capture_text"):
+                self.ctx.notify(
+                    "The Notes module is not available right now."
+                )
+                return
+            note_id = notes.capture_text(contents, title=note_title)
+            if not note_id:
+                self.ctx.notify("Could not create the meeting note.")
+                return
+            self._close_event_dialog()
+            self.ctx.open_module("notes")
+            self.ctx.show_window()
+            self.ctx.notify(
+                tr("Meeting note created: {title}", title=note_title)
+            )
 
         def on_save_template(_button) -> None:
             try:
@@ -4743,6 +4909,7 @@ class CalendarModule(BaseModule):
         if editing:
             template_button.connect("clicked", on_save_template)
             duplicate_button.connect("clicked", on_duplicate)
+            meeting_button.connect("clicked", on_meeting_note)
             if delete_only is not None:
                 delete_only.connect(
                     "clicked", lambda _b: delete_scope("only")

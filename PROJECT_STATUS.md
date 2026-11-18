@@ -1,6 +1,6 @@
 # Omnify — v1 status and Notes handoff
 
-Updated: 2026-11-17. This file is the handoff source of truth for the
+Updated: 2026-11-18. This file is the handoff source of truth for the
 next session. The student report for practical works is in
 `ПРАКТИЧНІ_РОБОТИ.md`; the public-facing project guide is `README.md`.
 
@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **535 tests**.
+module are implemented. The full headless suite is green: **581 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -56,7 +56,13 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
 - **Calculator** — scientific, exact/complex arithmetic, matrices,
   calculus, units, history, graphing.
 - **Calendar** — week/day/month, events, layers, recurrence, reminders,
-  search, stats and habits.
+  search, stats and habits; deterministic offline quick add for phrases
+  such as “Lunch tomorrow at 13:00” or “Зустріч завтра о 15:30”; optional
+  location/attendees and one-click meeting notes with agenda and action
+  items.
+- **Browser polish** — leading `!bang` searches (`!w`, `!yt`, `!gh`,
+  `!so`, `!aur`, `!maps`, aliases and a discoverable tooltip) plus a local,
+  account-free reading list with save/open-all/remove actions.
 - **Timer / stopwatch** — multiple persistent timers, presets, background
   operation, sounds, notifications, key/click/at triggers, laps.
 - **Alarm clock** — persistent alarms, weekday repeats, one-shot alarms,
@@ -265,6 +271,10 @@ The Notes module is implemented:
 - Tests: `tests/test_commands.py`, `tests/test_fuzzy.py`,
   `tests/test_module_commands.py`, `tests/test_templates.py`,
   `tests/test_plugins.py`, `tests/test_ai_client.py`.
+- Calendar/browser polish tests: `tests/test_calendar_quick.py` covers the
+  offline quick-add grammar and meeting-note Markdown;
+  `tests/test_browser_reading.py` covers bangs, URL validation and the
+  local reading list.
 
 ## UI artifacts
 
@@ -281,7 +291,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **535 OK**
+- `python3 -m unittest discover -s tests` → **581 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the
@@ -294,6 +304,11 @@ The Notes module is implemented:
 - `omnify-browser` opens LibreWolf maximized; Tor entry opens Tor Browser
   in Ukrainian
 - Browser migration page detects Brave and opens the Firefox importer
+- Calendar quick add creates `Lunch` for `Lunch tomorrow at 13:00`;
+  editing an event opens the Location/Attendees fields and **Meeting note**
+  creates a Markdown note in Notes
+- Browser search resolves `!gh python` without a network request and
+  Reading list saves/removes a local URL
 
 Known cosmetic limitation: this GTK build emits harmless slider
 `min width/height -2` warnings on startup.

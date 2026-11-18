@@ -1774,4 +1774,89 @@ TRANSLATIONS = {
     "Export note as Markdown…": "Експортувати нотатку в Markdown…",
     "Application": "Застосунок",
     "Navigation": "Навігація",
+    # Calendar quick add and meeting notes
+    "Quick add from a phrase": "Швидке додавання з фрази",
+    "Quick add: Lunch tomorrow at 13:00": (
+        "Швидке додавання: Обід завтра о 13:00"
+    ),
+    "Understands today/tomorrow, weekday names, 2026-11-20, 20.11.2026, month names, 13:00-14:30, 9am and durations such as “for 30 minutes”. English and Ukrainian are both supported.": (
+        "Розуміє «сьогодні»/«завтра», назви днів тижня, 2026-11-20, "
+        "20.11.2026, назви місяців, 13:00-14:30, 9am і тривалість на "
+        "кшталт «протягом 30 хвилин». Працює англійською та українською."
+    ),
+    "Add the event from the quick-add line": (
+        "Додати подію з рядка швидкого додавання"
+    ),
+    "Room, address or video link (optional)": (
+        "Кімната, адреса або посилання на відеозустріч (необов'язково)"
+    ),
+    "Names separated by commas (optional)": (
+        "Імена через кому (необов'язково)"
+    ),
+    "Create a Markdown note with the agenda, attendees and action items": (
+        "Створити Markdown-нотатку з порядком денним, учасниками та "
+        "завданнями"
+    ),
+    "Meeting note": "Нотатка зустрічі",
+    "The Notes module is not available right now.": (
+        "Модуль нотаток зараз недоступний."
+    ),
+    "Could not create the meeting note.": (
+        "Не вдалося створити нотатку зустрічі."
+    ),
+    "Meeting note created: {title}": (
+        "Нотатку зустрічі створено: {title}"
+    ),
+    "Added: {title} · {date} · {time}": (
+        "Додано: {title} · {date} · {time}"
+    ),
+    "Type an event, for example: Lunch tomorrow at 13:00": (
+        "Введіть подію, наприклад: Обід завтра о 13:00"
+    ),
+    "Invalid date: {value}": "Неправильна дата: {value}",
+    "Invalid time: {value}": "Неправильний час: {value}",
+    # Browser bangs and reading list
+    "Search bangs (type !name before the query):": (
+        "Пошукові скорочення (введіть !назва перед запитом):"
+    ),
+    "Tip: start with a bang, for example !w Wikipedia, !yt YouTube or !gh Python.": (
+        "Порада: почніть зі скорочення, наприклад !w Wikipedia, "
+        "!yt YouTube або !gh Python."
+    ),
+    "Reading list": "Список для читання",
+    "Open all": "Відкрити все",
+    "Open up to 10 saved pages in new tabs": (
+        "Відкрити до 10 збережених сторінок у нових вкладках"
+    ),
+    "Paste a URL to save for later…": (
+        "Вставте URL, щоб зберегти на потім…"
+    ),
+    "{count} saved": "Збережено: {count}",
+    "Reading list is empty.": "Список для читання порожній.",
+    "The list is stored locally in Omnify; no account or sync is involved.": (
+        "Список зберігається локально в Omnify; обліковий запис і "
+        "синхронізація не потрібні."
+    ),
+    "Remove": "Видалити",
+    "Saved: {title}": "Збережено: {title}",
+    "Opened {count} saved pages": "Відкрито збережених сторінок: {count}",
+    "Open a page first, then save it for later.": (
+        "Спочатку відкрийте сторінку, потім збережіть її на потім."
+    ),
+    "Focus the browser reading list": "Перейти до списку для читання",
+    "Save the last opened page for later": (
+        "Зберегти останню відкриту сторінку на потім"
+    ),
+    "A reading-list entry needs a URL": (
+        "Запис у списку для читання потребує URL"
+    ),
+    "Only web addresses can be saved for later": (
+        "На потім можна зберігати лише веб-адреси"
+    ),
+    "Unknown search shortcut": "Невідоме пошукове скорочення",
+    "Unknown search shortcut !{name}": (
+        "Невідоме пошукове скорочення !{name}"
+    ),
+    "Add a query after !{name}": "Додайте запит після !{name}",
+    "Unsafe URL scheme": "Небезпечна схема URL",
 }

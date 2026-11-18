@@ -29,6 +29,8 @@ from .browser_engine import (
     BrowserProfile,
     Protections,
     ProxyConfig,
+    ReadingList,
+    SEARCH_BANGS,
     SEARCH_ENGINES,
     TOR_DOWNLOAD_PAGE,
     TorBrowserInfo,
@@ -41,6 +43,7 @@ from .browser_engine import (
     protection_summary,
     quick_link_url,
     screen_size_hint,
+    title_from_url,
     url_from_input,
 )
 
@@ -70,6 +73,11 @@ class BrowserModule(BaseModule):
         self._migration_combo = None
         self._migration_status = None
         self._migration_copy_button = None
+        self._reading = ReadingList(context.storage)
+        self._reading_box = None
+        self._reading_entry = None
+        self._reading_count = None
+        self._reading_status = None
 
     def commands(self):
         """Expose browser actions to the command bus and shortcuts."""
@@ -104,6 +112,20 @@ class BrowserModule(BaseModule):
                 default_keys=("ctrl+l",),
                 scope="browser",
             ),
+            Command(
+                "browser.save_page",
+                "Save the last opened page for later",
+                self._save_last_to_reading,
+                category="Browser",
+                scope="browser",
+            ),
+            Command(
+                "browser.reading_list",
+                "Focus the browser reading list",
+                self._focus_reading,
+                category="Browser",
+                scope="browser",
+            ),
         )
 
     def _focus_search(self) -> bool:
@@ -127,7 +149,7 @@ class BrowserModule(BaseModule):
         try:
             target = url_from_input(value, self._config.search_url)
         except ValueError as exc:
-            self.ctx.notify(str(exc))
+            self.ctx.notify(tr(str(exc)))
             return False
         if not target:
             return False
@@ -142,7 +164,7 @@ class BrowserModule(BaseModule):
         try:
             target = url_from_input(value, self._config.search_url)
         except ValueError as exc:
-            self.ctx.notify(str(exc))
+            self.ctx.notify(tr(str(exc)))
             return False
         if not target:
             return False
@@ -152,6 +174,24 @@ class BrowserModule(BaseModule):
     def last_url(self) -> str:
         """The most recently opened URL (empty when nothing was opened yet)."""
         return str(getattr(self._config, "last_url", "") or "")
+
+    def save_for_later(
+        self, url: Optional[str] = None, title: str = ""
+    ) -> Optional[Dict[str, str]]:
+        """Save a URL (or the last opened page) to the local reading list."""
+        target = str(url or self.last_url()).strip()
+        if not target:
+            return None
+        try:
+            entry = self._reading.add(target, title)
+        except ValueError:
+            return None
+        self._refresh_reading_list()
+        return entry
+
+    def reading_entries(self) -> list[Dict[str, str]]:
+        """The local reading list, newest first (public plugin API)."""
+        return self._reading.all()
 
     # ------------------------------------------------------------------
     # View construction
@@ -184,6 +224,7 @@ class BrowserModule(BaseModule):
         root.append(header)
 
         root.append(self._build_hero(Gtk))
+        root.append(self._build_reading(Gtk))
         root.append(self._build_privacy(Gtk))
         root.append(self._build_migration(Gtk))
         root.append(self._build_protections(Gtk))
@@ -233,12 +274,28 @@ class BrowserModule(BaseModule):
         )
         self._search_entry.set_hexpand(True)
         self._search_entry.connect("activate", self._on_search_activate)
+        bang_tooltip = tr("Search bangs (type !name before the query):")
+        bang_tooltip += "\n" + "\n".join(
+            f"!{name} — {label}"
+            for name, (label, _url) in SEARCH_BANGS.items()
+        )
+        self._search_entry.set_tooltip_text(bang_tooltip)
         search_row.append(self._search_entry)
         search_button = Gtk.Button(label="Go")
         search_button.get_style_context().add_class("omnify-accent")
         search_button.connect("clicked", self._on_search_activate)
         search_row.append(search_button)
         card.append(search_row)
+        bang_hint = Gtk.Label(
+            label=tr(
+                "Tip: start with a bang, for example !w Wikipedia, "
+                "!yt YouTube or !gh Python."
+            ),
+            xalign=0.0,
+        )
+        bang_hint.set_wrap(True)
+        bang_hint.get_style_context().add_class("omnify-dim")
+        card.append(bang_hint)
 
         quick_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         quick_row.set_homogeneous(False)
@@ -269,6 +326,69 @@ class BrowserModule(BaseModule):
         hint.set_wrap(True)
         hint.get_style_context().add_class("omnify-dim")
         card.append(hint)
+        return card
+
+    def _build_reading(self, Gtk) -> Any:
+        """A local "save for later" list with reopen/remove actions."""
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        card.get_style_context().add_class("omnify-card")
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        title = Gtk.Label(label=tr("Reading list"), xalign=0.0)
+        title.get_style_context().add_class("omnify-card-title")
+        header.append(title)
+        self._reading_count = Gtk.Label(label="", xalign=0.0)
+        self._reading_count.set_hexpand(True)
+        self._reading_count.get_style_context().add_class("omnify-dim")
+        header.append(self._reading_count)
+        open_all = Gtk.Button(label=tr("Open all"))
+        open_all.set_tooltip_text(
+            tr("Open up to 10 saved pages in new tabs")
+        )
+        open_all.connect("clicked", self._on_reading_open_all)
+        header.append(open_all)
+        card.append(header)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._reading_entry = Gtk.Entry()
+        self._reading_entry.set_placeholder_text(
+            tr("Paste a URL to save for later…")
+        )
+        self._reading_entry.set_hexpand(True)
+        self._reading_entry.connect("activate", self._on_reading_save)
+        row.append(self._reading_entry)
+        save = Gtk.Button(label=tr("Save"))
+        save.get_style_context().add_class("omnify-accent")
+        save.connect("clicked", self._on_reading_save)
+        row.append(save)
+        card.append(row)
+
+        self._reading_status = Gtk.Label(label="", xalign=0.0)
+        self._reading_status.set_wrap(True)
+        self._reading_status.get_style_context().add_class("omnify-dim")
+        card.append(self._reading_status)
+
+        self._reading_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=4
+        )
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_max_content_height(190)
+        scroll.set_propagate_natural_height(True)
+        scroll.set_child(self._reading_box)
+        card.append(scroll)
+
+        hint = Gtk.Label(
+            label=tr(
+                "The list is stored locally in Omnify; no account or sync "
+                "is involved."
+            ),
+            xalign=0.0,
+        )
+        hint.set_wrap(True)
+        hint.get_style_context().add_class("omnify-dim")
+        card.append(hint)
+        self._refresh_reading_list()
         return card
 
     def _build_privacy(self, Gtk) -> Any:
@@ -1036,11 +1156,117 @@ class BrowserModule(BaseModule):
             self._browser_language_combo.set_active(2)
         self.ctx.notify(tr("Ukrainian language pack installed — restart the browser"))
 
+    # -- reading list ---------------------------------------------------
+    def _set_reading_status(self, text: str) -> None:
+        if self._reading_status is not None:
+            self._reading_status.set_text(text)
+
+    def _refresh_reading_list(self) -> None:
+        if self._reading_box is None:
+            return
+        from gi.repository import Gtk
+
+        child = self._reading_box.get_first_child()
+        while child is not None:
+            following = child.get_next_sibling()
+            self._reading_box.remove(child)
+            child = following
+        entries = self._reading.all()
+        if self._reading_count is not None:
+            self._reading_count.set_text(
+                tr("{count} saved", count=len(entries))
+            )
+        if not entries:
+            empty = Gtk.Label(
+                label=tr("Reading list is empty."), xalign=0.0
+            )
+            empty.get_style_context().add_class("omnify-dim")
+            self._reading_box.append(empty)
+            return
+        for entry in entries:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            open_button = Gtk.Button(
+                label=entry.get("title") or title_from_url(entry["url"])
+            )
+            open_button.set_hexpand(True)
+            open_button.set_halign(Gtk.Align.FILL)
+            open_button.get_style_context().add_class("calc-chip")
+            added = str(entry.get("added_at") or "").replace("T", " ")[:16]
+            open_button.set_tooltip_text(
+                f"{entry['url']}\n{tr('Saved')}: {added}".rstrip()
+            )
+            open_button.connect(
+                "clicked",
+                lambda _button, url=entry["url"]: self._launch([url]),
+            )
+            row.append(open_button)
+            remove = Gtk.Button(label="✕")
+            remove.set_tooltip_text(tr("Remove"))
+            remove.get_style_context().add_class("omnify-danger")
+            remove.connect(
+                "clicked",
+                lambda _button, entry_id=entry["id"]: self._on_reading_remove(
+                    entry_id
+                ),
+            )
+            row.append(remove)
+            self._reading_box.append(row)
+
+    def _on_reading_save(self, _widget=None) -> None:
+        text = self._reading_entry.get_text() if self._reading_entry else ""
+        try:
+            entry = self._reading.add(text)
+        except ValueError as exc:
+            self._set_reading_status(tr(str(exc)))
+            return
+        if self._reading_entry is not None:
+            self._reading_entry.set_text("")
+        self._refresh_reading_list()
+        self._set_reading_status(tr("Saved: {title}", title=entry["title"]))
+
+    def _on_reading_remove(self, entry_id: str) -> None:
+        if self._reading.remove(entry_id):
+            self._refresh_reading_list()
+
+    def _on_reading_open_all(self, _button=None) -> None:
+        urls = [entry["url"] for entry in self._reading.all()][:10]
+        if not urls:
+            self._set_reading_status(tr("Reading list is empty."))
+            return
+        self._launch(urls)
+        self._set_reading_status(
+            tr("Opened {count} saved pages", count=len(urls))
+        )
+
+    def _save_last_to_reading(self) -> bool:
+        url = self.last_url()
+        if not url:
+            self._focus_reading()
+            self._set_reading_status(
+                tr("Open a page first, then save it for later.")
+            )
+            return False
+        try:
+            entry = self._reading.add(url)
+        except ValueError as exc:
+            self._set_reading_status(tr(str(exc)))
+            return False
+        self._refresh_reading_list()
+        self._set_reading_status(tr("Saved: {title}", title=entry["title"]))
+        return True
+
+    def _focus_reading(self) -> bool:
+        if self._reading_entry is None:
+            return False
+        self._reading_entry.grab_focus()
+        self._reading_entry.select_region(0, -1)
+        return True
+
     def _on_search_activate(self, _widget) -> None:
         try:
             url = url_from_input(self._search_entry.get_text(), self._config.search_url)
         except ValueError as exc:
-            self.ctx.notify(str(exc))
+            self.ctx.notify(tr(str(exc)))
             return
         if not url:
             return
@@ -1067,6 +1293,11 @@ class BrowserModule(BaseModule):
         if urls:
             self._config.last_url = urls[0]
             self._profile.save_config(self._config)
+            if (
+                self._reading_entry is not None
+                and not self._reading_entry.get_text().strip()
+            ):
+                self._reading_entry.set_text(urls[0])
         self.ctx.notify(
             tr("Opening {browser}", browser=self._browser.name)
             if not private

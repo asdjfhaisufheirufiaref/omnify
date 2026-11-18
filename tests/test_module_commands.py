@@ -33,10 +33,13 @@ class ModuleCommandTests(unittest.TestCase):
         self.assertGreater(len(registry.all()), 50)
         self.assertIsNotNone(registry.get("notes.save"))
         self.assertIsNotNone(registry.get("calendar.new_event"))
+        self.assertIsNotNone(registry.get("calendar.quick_add"))
         self.assertIsNotNone(registry.get("timer.start"))
         self.assertIsNotNone(registry.get("stopwatch.toggle"))
         self.assertIsNotNone(registry.get("tasks.refresh"))
         self.assertIsNotNone(registry.get("browser.open"))
+        self.assertIsNotNone(registry.get("browser.save_page"))
+        self.assertIsNotNone(registry.get("browser.reading_list"))
 
     def test_default_timer_shortcuts_can_be_global(self) -> None:
         by_id = {module_cls.id: module_cls for module_cls in ALL_MODULES}
