@@ -1674,6 +1674,22 @@ class NotesModule(BaseModule):
                 when=editor_focused,
             ),
             Command(
+                "notes.math_inline",
+                "Insert inline LaTeX math",
+                lambda: self._format_selection("math"),
+                category="Notes",
+                scope="notes",
+                when=editor_focused,
+            ),
+            Command(
+                "notes.math_block",
+                "Insert display LaTeX math",
+                call("_format_math_block"),
+                category="Notes",
+                scope="notes",
+                when=editor_focused,
+            ),
+            Command(
                 "notes.duplicate",
                 "Duplicate note",
                 call("_on_duplicate_note"),
@@ -2458,6 +2474,46 @@ class NotesModule(BaseModule):
         self._body_view.grab_focus()
         self._schedule_save()
 
+    def _format_math_block(self) -> None:
+        """Обгорнути виділення або вставити приклад display-формули."""
+        if self._current_note is None:
+            return
+        if self._preview_toggle.get_active():
+            self._preview_toggle.set_active(False)
+
+        buffer = self._body_view.get_buffer()
+        selected = ""
+        if buffer.get_has_selection():
+            start, end = buffer.get_selection_bounds()
+            selected = buffer.get_text(start, end, True)
+            buffer.delete(start, end)
+
+        placeholder = "x^2 + y^2 = z^2"
+        body = selected or placeholder
+        cursor = buffer.get_iter_at_mark(buffer.get_insert())
+        prefix = "" if cursor.starts_line() else "\n"
+        snippet = f"{prefix}$$\n{body}\n$$\n"
+        buffer.begin_user_action()
+        try:
+            buffer.insert(cursor, snippet)
+        finally:
+            buffer.end_user_action()
+        if not selected:
+            end_iter = buffer.get_iter_at_mark(buffer.get_insert())
+            end_iter.backward_chars(len("\n$$\n"))
+            start_iter = end_iter.copy()
+            start_iter.backward_chars(len(placeholder))
+            buffer.select_range(start_iter, end_iter)
+        self._body_view.scroll_to_iter(
+            buffer.get_iter_at_mark(buffer.get_insert()),
+            0.0,
+            False,
+            0.0,
+            0.0,
+        )
+        self._body_view.grab_focus()
+        self._schedule_save()
+
     def _format_selection(self, action: str) -> None:
         """Застосувати просте Markdown-форматування до виділення.
 
@@ -2483,6 +2539,7 @@ class NotesModule(BaseModule):
             "strike": ("~~", "~~", "text"),
             "code": ("`", "`", "code"),
             "link": ("[", "](https://)", "text"),
+            "math": ("$", "$", "x^2"),
         }
         line_prefixes = {
             "heading": "# ",

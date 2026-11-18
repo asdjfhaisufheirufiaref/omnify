@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 
-from . import notes_render
+from . import notes_math, notes_render
 
 
 def _label(markup: str, css_class: str = "notes-preview-text", wrap: bool = True):
@@ -218,6 +218,14 @@ def build_preview(note, store, on_checklist_toggle=None):
             box.append(code)
         elif block.kind == "image":
             box.append(_image_widget(block, store))
+        elif block.kind == "math":
+            formula = _label(
+                notes_math.latex_to_pango(block.text),
+                css_class="notes-preview-math",
+            )
+            formula.set_justify(Gtk.Justification.CENTER)
+            formula.set_xalign(0.5)
+            box.append(formula)
         elif block.kind == "rule":
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             separator.set_margin_top(10)

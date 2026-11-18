@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import quote
 
+from . import notes_math
+
 # Регулярні вирази для розпізнавання блоків Markdown.
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.*)$")
 _CHECKLIST_RE = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.*)$")
@@ -75,6 +77,44 @@ def _split_table_row(line: str) -> list[str]:
     return [cell.strip().replace(r"\|", "|") for cell in cells]
 
 
+def _display_math(lines: list[str], index: int):
+    """Розпізнати блок ``$$...$$`` або ``\\[...\\]``.
+
+    Повертає ``(tex, next_index)`` або ``None``.  Якщо закривач не знайдено,
+    блок не вважається математикою: краще показати сирий текст, ніж
+    проковтнути решту нотатки.
+    """
+    stripped = lines[index].strip()
+    if stripped.startswith("$$"):
+        closer = "$$"
+        remainder = stripped[2:]
+    elif stripped.startswith("\\["):
+        closer = "\\]"
+        remainder = stripped[2:]
+    else:
+        return None
+
+    if closer in remainder:
+        before, _separator, after = remainder.partition(closer)
+        if after.strip() or not before.strip():
+            return None
+        return before.strip(), index + 1
+
+    content = [remainder] if remainder.strip() else []
+    cursor = index + 1
+    while cursor < len(lines):
+        line = lines[cursor]
+        if closer in line:
+            before, _separator, after = line.partition(closer)
+            if after.strip():
+                return None
+            content.append(before)
+            return "\n".join(content).strip(), cursor + 1
+        content.append(line)
+        cursor += 1
+    return None
+
+
 def _looks_like_table(lines: list[str], index: int) -> bool:
     """Перевірити, чи починається на рядку ``index`` Markdown-таблиця."""
     if index + 1 >= len(lines):
@@ -86,6 +126,8 @@ def _starts_block(lines: list[str], index: int) -> bool:
     """Чи може рядок почати новий блок, а не продовжити абзац?"""
     line = lines[index]
     if not line.strip():
+        return True
+    if line.strip().startswith(("$$", "\\[")):
         return True
     if _FENCE_RE.match(line) or _HEADING_RE.match(line):
         return True
@@ -113,6 +155,14 @@ def parse_markdown(text: str) -> list[Block]:
         # Порожні рядки просто розділяють блоки.
         if not stripped:
             index += 1
+            continue
+
+        # --- Блок математики --------------------------------------------
+        math_block = _display_math(lines, index)
+        if math_block is not None:
+            content, next_index = math_block
+            blocks.append(Block(kind="math", text=content))
+            index = next_index
             continue
 
         # --- Блок коду в потрійних лапках -------------------------------
@@ -240,20 +290,58 @@ def _escape_attr(text: str) -> str:
     return html.escape(text, quote=True)
 
 
-def _inline_html(text: str) -> str:
-    """Перетворити **жирний**, *курсив*, `код` і посилання в HTML.
+def _extract_inline_markup(text: str, render_math):
+    """Відкласти код і математику, щоб Markdown їх не зіпсував.
 
-    Спочатку екрануємо небезпечні символи. Потім тимчасово ховаємо
-    ``код``, щоб форматування всередині нього не спрацьовувало.
+    Повертає текст із placeholders, список кодових фрагментів і список
+    готових math-фрагментів.  ``notes_math`` отримує сирий TeX, тому
+    підкреслення ``x_1`` не стає курсивом, а ``\\text{a < b}`` коректно
+    екранується.
     """
-    escaped = _escape_html(text)
     code_spans: list[str] = []
+    math_spans: list[str] = []
 
     def save_code(match: re.Match[str]) -> str:
         code_spans.append(match.group(1))
         return f"\x00CODE{len(code_spans) - 1}\x00"
 
-    escaped = re.sub(r"`([^`\n]+)`", save_code, escaped)
+    text = re.sub(r"`([^`\n]+)`", save_code, text)
+
+    def save_math(source: str) -> str:
+        math_spans.append(render_math(source))
+        return f"\x00MATH{len(math_spans) - 1}\x00"
+
+    text = notes_math.replace_inline(text, save_math)
+    return text, code_spans, math_spans
+
+
+def _restore_inline_markup(
+    text: str,
+    code_spans: list[str],
+    math_spans: list[str],
+    code_template: str,
+) -> str:
+    for number, code in enumerate(code_spans):
+        text = text.replace(
+            f"\x00CODE{number}\x00",
+            code_template.format(code=_escape_html(code)),
+        )
+    for number, fragment in enumerate(math_spans):
+        text = text.replace(f"\x00MATH{number}\x00", fragment)
+    return text
+
+
+def _inline_html(text: str) -> str:
+    """Перетворити **жирний**, *курсив*, `код` і посилання в HTML.
+
+    Спочатку відкладаємо код і математику, потім екрануємо небезпечні
+    символи.  Так форматування не спрацьовує всередині них.
+    """
+    text, code_spans, math_spans = _extract_inline_markup(
+        text,
+        lambda source: notes_math.inline_math_fragment(source, html_mode=True),
+    )
+    escaped = _escape_html(text)
 
     # Картинки та посилання. URL беремо з Markdown і екрануємо для HTML.
     escaped = re.sub(
@@ -279,13 +367,12 @@ def _inline_html(text: str) -> str:
     escaped = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"<em>\1</em>", escaped)
     escaped = re.sub(r"~~([^~\n]+)~~", r"<del>\1</del>", escaped)
 
-    # Повертаємо збережений код уже як безпечний HTML.
-    for number, code in enumerate(code_spans):
-        escaped = escaped.replace(
-            f"\x00CODE{number}\x00",
-            f"<code>{_escape_html(code)}</code>",
-        )
-    return escaped
+    return _restore_inline_markup(
+        escaped,
+        code_spans,
+        math_spans,
+        "<code>{code}</code>",
+    )
 
 
 def inline_pango(text: str) -> str:
@@ -295,16 +382,14 @@ def inline_pango(text: str) -> str:
 
     Pango не розуміє HTML, але вміє ``<b>``, ``<i>``, ``<tt>`` та
     ``<span>``. Текст обов'язково екрануємо, інакше символи ``<`` могли б
-    зламати розмітку.
+    зламати розмітку.  Код і ``$...$`` відкладаються до екранування, тому
+    підкреслення в TeX не перетворюється на курсив.
     """
+    text, code_spans, math_spans = _extract_inline_markup(
+        text,
+        lambda source: notes_math.inline_math_fragment(source, html_mode=False),
+    )
     escaped = html.escape(text, quote=False)
-    code_spans: list[str] = []
-
-    def save_code(match: re.Match[str]) -> str:
-        code_spans.append(match.group(1))
-        return f"\x00CODE{len(code_spans) - 1}\x00"
-
-    escaped = re.sub(r"`([^`\n]+)`", save_code, escaped)
     escaped = re.sub(
         r"!\[([^\]]*)\]\(([^)\s]+)\)",
         lambda m: f"[{html.escape(m.group(1))}]",
@@ -322,12 +407,12 @@ def inline_pango(text: str) -> str:
     escaped = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"<i>\1</i>", escaped)
     escaped = re.sub(r"~~([^~\n]+)~~", r"<s>\1</s>", escaped)
 
-    for number, code in enumerate(code_spans):
-        escaped = escaped.replace(
-            f"\x00CODE{number}\x00",
-            f"<tt>{html.escape(code)}</tt>",
-        )
-    return escaped
+    return _restore_inline_markup(
+        escaped,
+        code_spans,
+        math_spans,
+        "<tt>{code}</tt>",
+    )
 
 
 # ----------------------------------------------------------------------
@@ -442,6 +527,11 @@ def note_to_html(note, store=None) -> str:
             )
         elif block.kind == "image":
             body.append(_html_image(block, store))
+        elif block.kind == "math":
+            body.append(
+                '<div class="math math-display">'
+                f"{notes_math.latex_to_html(block.text)}</div>"
+            )
         elif block.kind == "rule":
             body.append("<hr>")
 
@@ -476,6 +566,11 @@ img {{ max-width: 100%; height: auto; border-radius: 6px; }}
 figure {{ margin: 1em 0; }}
 hr {{ border: none; border-top: 1px solid #ccc; margin: 1.5em 0; }}
 a {{ color: #2b6cb0; }}
+.math {{ font-family: "STIX Two Math", "DejaVu Serif", serif;
+        white-space: nowrap; }}
+.math sup, .math sub {{ font-size: .72em; line-height: 0; }}
+.math-display {{ display: block; text-align: center; margin: 1.2em 0;
+                font-size: 1.18em; white-space: normal; }}
 </style>
 </head>
 <body>
@@ -692,6 +787,8 @@ class _PdfWriter:
             self._draw_table(block)
         elif block.kind == "image":
             self._draw_image(block)
+        elif block.kind == "math":
+            self._draw_math(block)
         elif block.kind == "rule":
             self._ensure_space(12)
             self.cr.set_source_rgb(0.78, 0.78, 0.78)
@@ -779,6 +876,20 @@ class _PdfWriter:
             self.y += row_height
 
         self.y += 8
+
+    def _draw_math(self, block: Block) -> None:
+        """Намалювати display-формулу по центру сторінки."""
+        layout = self._layout(
+            notes_math.latex_to_pango(block.text),
+            12,
+            _CONTENT_WIDTH - 24,
+        )
+        width, height = layout.get_pixel_size()
+        self._ensure_space(height + 18)
+        self.cr.set_source_rgb(0.1, 0.1, 0.1)
+        x = _MARGIN + max(0.0, (_CONTENT_WIDTH - width) / 2)
+        self._draw_layout(layout, x, self.y + 4)
+        self.y += height + 14
 
     def _draw_image(self, block: Block) -> None:
         """Вставити картинку, якщо вона існує та читається."""

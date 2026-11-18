@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **581 tests**.
+module are implemented. The full headless suite is green: **602 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -206,6 +206,12 @@ The Notes module is implemented:
   checklists and pipe tables are rendered in preview and in exports;
 - **Preview** renders headings, paragraphs, lists, checklists, tables, code,
   links, images and tags without WebKit; checklist boxes are clickable;
+- **LaTeX math** is rendered by `notes_math.py` without WebKit, KaTeX or
+  Node: inline `$x^2$` / `\(x^2\)` and display `$$...$$` / `\[...\]`
+  work in preview, standalone HTML and PDF, including Greek letters,
+  operators, fractions, roots, scripts, accents, `\text`, `\mathbb`,
+  `\mathbf`, simple matrices and common functions; unknown commands stay
+  visible; palette commands insert inline and display templates;
 - export to standalone HTML (images embedded as base64), PDF through
   cairo/Pango, a portable Markdown folder with copied assets, and all notes
   as an HTML bundle with `index.html` or a Markdown bundle with `index.md`;
@@ -275,6 +281,8 @@ The Notes module is implemented:
   offline quick-add grammar and meeting-note Markdown;
   `tests/test_browser_reading.py` covers bangs, URL validation and the
   local reading list.
+- Math tests: `tests/test_notes_math.py` covers the TeX subset, inline
+  currency heuristics, code-span protection, display blocks and HTML export.
 
 ## UI artifacts
 
@@ -291,7 +299,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **581 OK**
+- `python3 -m unittest discover -s tests` → **602 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the
@@ -309,6 +317,8 @@ The Notes module is implemented:
   creates a Markdown note in Notes
 - Browser search resolves `!gh python` without a network request and
   Reading list saves/removes a local URL
+- Notes preview renders `Inline $x_1^2$` as text plus scripts and a
+  `$$\frac{a+b}{c} = \sqrt[3]{x}$$` block as a bordered formula
 
 Known cosmetic limitation: this GTK build emits harmless slider
 `min width/height -2` warnings on startup.

@@ -677,6 +677,16 @@ button:disabled { opacity: 0.55; }
     font-weight: 700;
     background: var(--omnify-bg-alt);
 }
+.notes-preview-math {
+    font-family: "STIX Two Math", "DejaVu Serif", serif;
+    font-size: 1.18em;
+    background: var(--omnify-bg-raised);
+    border: 1px solid var(--omnify-border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
 .notes-preview-missing,
 .notes-preview-muted {
     color: var(--omnify-fg-dim);

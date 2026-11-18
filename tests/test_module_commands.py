@@ -32,6 +32,8 @@ class ModuleCommandTests(unittest.TestCase):
                 registry.register(command)
         self.assertGreater(len(registry.all()), 50)
         self.assertIsNotNone(registry.get("notes.save"))
+        self.assertIsNotNone(registry.get("notes.math_inline"))
+        self.assertIsNotNone(registry.get("notes.math_block"))
         self.assertIsNotNone(registry.get("calendar.new_event"))
         self.assertIsNotNone(registry.get("calendar.quick_add"))
         self.assertIsNotNone(registry.get("timer.start"))
