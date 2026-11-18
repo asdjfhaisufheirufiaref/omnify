@@ -78,6 +78,8 @@ class BrowserModule(BaseModule):
         self._reading_entry = None
         self._reading_count = None
         self._reading_status = None
+        self._actions_bridge = None
+        self._actions_status = None
 
     def commands(self):
         """Expose browser actions to the command bus and shortcuts."""
@@ -235,6 +237,8 @@ class BrowserModule(BaseModule):
         self._refresh_shields_status()
         self._refresh_migration_sources()
         self._refresh_score()
+        self._start_actions_bridge()
+        self._refresh_actions_status()
         return root
 
     def _build_hero(self, Gtk) -> Any:
@@ -450,6 +454,29 @@ class BrowserModule(BaseModule):
         shields_note.set_wrap(True)
         shields_note.get_style_context().add_class("omnify-dim")
         card.append(shields_note)
+
+        actions_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self._actions_status = Gtk.Label(label="", xalign=0.0)
+        self._actions_status.set_hexpand(True)
+        self._actions_status.set_wrap(True)
+        self._actions_status.get_style_context().add_class("browser-status")
+        actions_row.append(self._actions_status)
+        actions_button = Gtk.Button(label="Reinstall selection actions")
+        actions_button.connect("clicked", self._on_reinstall_actions)
+        actions_row.append(actions_button)
+        card.append(actions_row)
+        actions_note = Gtk.Label(
+            label=(
+                "Select text on any page and use “Move selection to a new "
+                "note” or “Solve in Calculator” from the context menu. "
+                "Omnify listens on 127.0.0.1 only; selected text is never "
+                "sent anywhere else."
+            ),
+            xalign=0.0,
+        )
+        actions_note.set_wrap(True)
+        actions_note.get_style_context().add_class("omnify-dim")
+        card.append(actions_note)
 
         password_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         password_label = Gtk.Label(
@@ -737,6 +764,12 @@ class BrowserModule(BaseModule):
                 "shields",
                 "Omnify Shields",
                 "Install the local-only companion blocker and its per-tab counter.",
+            ),
+            (
+                "selection_actions",
+                "Browser selection actions",
+                "Add “Move selection to a new note” and “Solve in Calculator” "
+                "to the page context menu.",
             ),
         )
 
@@ -1039,6 +1072,144 @@ class BrowserModule(BaseModule):
             )
             context.add_class("browser-status-warn")
 
+    # -- selection actions ----------------------------------------------
+    def _start_actions_bridge(self) -> None:
+        """Start the loopback listener used by the context-menu extension."""
+        if self._actions_bridge is not None:
+            return
+        from .browser_actions import SelectionBridge, install_extension
+
+        bridge = SelectionBridge(self._profile.root, self._on_selection_action)
+        try:
+            _endpoint, token = bridge.start()
+        except (OSError, RuntimeError):
+            self._actions_bridge = None
+            return
+        self._actions_bridge = bridge
+        if not self._config.protections.selection_actions:
+            return
+        try:
+            install_extension(
+                self._profile.root,
+                {"port": bridge.port, "token": token},
+            )
+        except OSError:
+            pass
+
+    def _refresh_actions_status(self) -> None:
+        if self._actions_status is None:
+            return
+        from .browser_actions import extension_status
+
+        present, port = extension_status(self._profile.root)
+        context = self._actions_status.get_style_context()
+        for name in ("browser-status-ok", "browser-status-warn"):
+            context.remove_class(name)
+        if present and self._actions_bridge is not None:
+            self._actions_status.set_text(
+                tr(
+                    "Selection actions ready on 127.0.0.1:{port} — restart "
+                    "the browser after reinstalling.",
+                    port=self._actions_bridge.port or port,
+                )
+            )
+            context.add_class("browser-status-ok")
+        elif present:
+            self._actions_status.set_text(
+                tr(
+                    "Selection actions installed — Omnify must stay running "
+                    "to receive them."
+                )
+            )
+            context.add_class("browser-status-warn")
+        else:
+            self._actions_status.set_text(
+                tr(
+                    "Selection actions are not installed — press “Reinstall "
+                    "selection actions”."
+                )
+            )
+            context.add_class("browser-status-warn")
+
+    def _on_reinstall_actions(self, _button) -> None:
+        from .browser_actions import install_extension
+
+        self._start_actions_bridge()
+        config = None
+        if self._actions_bridge is not None:
+            config = {
+                "port": self._actions_bridge.port,
+                "token": self._actions_bridge.token,
+            }
+        try:
+            install_extension(self._profile.root, config)
+        except OSError as exc:
+            self.ctx.notify(
+                tr("Could not install selection actions: {error}", error=exc)
+            )
+            return
+        self._config.protections.selection_actions = True
+        self._profile.apply(self._config)
+        self._sync_switches()
+        self._refresh_actions_status()
+        self.ctx.notify(
+            tr("Selection actions installed — restart the browser to apply")
+        )
+
+    def _on_selection_action(
+        self,
+        action: str,
+        text: str,
+        title: str,
+        url: str,
+    ) -> bool:
+        """Accept an action from the HTTP thread and queue it for GTK."""
+        try:
+            from gi.repository import GLib
+        except Exception:
+            return False
+        GLib.idle_add(self._run_selection_action, action, text, title, url)
+        return True
+
+    def _run_selection_action(
+        self,
+        action: str,
+        text: str,
+        title: str,
+        url: str,
+    ) -> bool:
+        """Handle a browser selection on the GTK main thread."""
+        from .browser_actions import normalise_expression, selection_note
+
+        try:
+            if action == "note":
+                notes = self.ctx.get_module("notes")
+                if notes is None:
+                    self.ctx.notify(tr("Notes is not available"))
+                    return False
+                note_title, contents = selection_note(text, title, url)
+                note_id = notes.capture_text(contents, title=note_title)
+                if note_id:
+                    self.ctx.notify(tr("Selection saved to a new note"))
+                else:
+                    self.ctx.notify(tr("Could not save the selection to Notes"))
+                return False
+            if action == "calculator":
+                calculator = self.ctx.get_module("calculator")
+                expression = normalise_expression(text)
+                if calculator is None or not expression:
+                    self.ctx.notify(tr("Could not solve the selected text"))
+                    return False
+                if calculator.solve(expression):
+                    self.ctx.open_module("calculator")
+                    self.ctx.show_window()
+                else:
+                    self.ctx.notify(tr("Could not solve the selected text"))
+                return False
+        except Exception:
+            self.ctx.notify(tr("Could not handle the browser selection"))
+        return False
+
     def _refresh_score(self) -> None:
         if not hasattr(self, "_score_label"):
             return
@@ -1063,6 +1234,8 @@ class BrowserModule(BaseModule):
         setattr(self._config.protections, attr, bool(switch.get_active()))
         self._profile.apply(self._config)
         self._refresh_score()
+        if attr == "selection_actions":
+            self._refresh_actions_status()
         self.ctx.notify(tr("Protections updated — restart the browser to apply"))
 
     def _on_apply_protections(self, _button) -> None:
@@ -1417,12 +1590,17 @@ class BrowserModule(BaseModule):
                 self._updating = False
 
     def on_show(self) -> None:
+        self._start_actions_bridge()
         self._refresh_browser_status()
         self._refresh_tor_status()
         self._refresh_shields_status()
+        self._refresh_actions_status()
 
     def on_hide(self) -> None:
         self._profile.save_config(self._config)
 
     def save_state(self) -> None:
         self._profile.save_config(self._config)
+        if self._actions_bridge is not None:
+            self._actions_bridge.stop()
+            self._actions_bridge = None

@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **602 tests**.
+module are implemented. The full headless suite is green: **644 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -62,7 +62,9 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
   items.
 - **Browser polish** — leading `!bang` searches (`!w`, `!yt`, `!gh`,
   `!so`, `!aur`, `!maps`, aliases and a discoverable tooltip) plus a local,
-  account-free reading list with save/open-all/remove actions.
+  account-free reading list with save/open-all/remove actions; page
+  selections can be moved to a new note or solved in Calculator through a
+  companion WebExtension and a token-protected loopback bridge.
 - **Timer / stopwatch** — multiple persistent timers, presets, background
   operation, sounds, notifications, key/click/at triggers, laps.
 - **Alarm clock** — persistent alarms, weekday repeats, one-shot alarms,
@@ -115,10 +117,14 @@ Primary browser: portable **LibreWolf AppImage** with a managed profile at
 `~/.local/share/omnify/browser/profile`. Firefox is a fallback. The
 profile is hardened with tracking/cookie/fingerprinting/HTTPS
 protections; **Omnify Shields** is a local extension that shows blocked
-hosts per tab and supports per-site pause. Private windows and a
-maximum-privacy **Tor Browser** launcher are available. Tor Browser is
-installed at `~/.local/share/omnify/browser/tor-browser` and its UI is
-Ukrainian.
+hosts per tab and supports per-site pause. A second local WebExtension adds
+**Move selection to a new note** and **Solve in Calculator** to the page
+context menu. It posts only the selected text, page title and URL to
+`127.0.0.1` with a per-profile random token; `omnify/modules/browser_actions.py`
+caps the body size, rejects non-POST requests and never logs selections.
+Private windows and a maximum-privacy **Tor Browser** launcher are available.
+Tor Browser is installed at `~/.local/share/omnify/browser/tor-browser` and
+its UI is Ukrainian.
 
 The managed profile also disables RFP letterboxing margins (they looked
 like grey strips on a maximized window; the rest of RFP stays active) and
@@ -283,6 +289,10 @@ The Notes module is implemented:
   local reading list.
 - Math tests: `tests/test_notes_math.py` covers the TeX subset, inline
   currency heuristics, code-span protection, display blocks and HTML export.
+- Browser selection tests: `tests/test_browser_actions.py` covers token
+  config, extension files/locales, note payload sanitising, expression
+  normalisation, HTTP auth/size limits, bridge restart/fallback and profile
+  install/remove.
 
 ## UI artifacts
 
@@ -299,7 +309,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **602 OK**
+- `python3 -m unittest discover -s tests` → **644 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the
@@ -317,6 +327,9 @@ The Notes module is implemented:
   creates a Markdown note in Notes
 - Browser search resolves `!gh python` without a network request and
   Reading list saves/removes a local URL
+- Browser selection actions post to the loopback bridge: a note action
+  creates a note with its source and a calculator action opens Calculator
+  with the normalised expression
 - Notes preview renders `Inline $x_1^2$` as text plus scripts and a
   `$$\frac{a+b}{c} = \sqrt[3]{x}$$` block as a bordered formula
 

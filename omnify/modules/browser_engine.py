@@ -216,6 +216,8 @@ class Protections:
     memory_saver: bool = True
     #: Install the local Omnify Shields companion extension.
     shields: bool = True
+    #: Install the context-menu bridge for browser selections.
+    selection_actions: bool = True
 
     def to_dict(self) -> Dict[str, bool]:
         return asdict(self)
@@ -436,12 +438,27 @@ class BrowserProfile:
         # signatures are not enforced (true for LibreWolf).  Failure here must
         # never prevent the browser itself from starting.
         try:
-            from .browser_shields import install_extension, remove_extension
+            from .browser_shields import (
+                install_extension as install_shields,
+                remove_extension as remove_shields,
+            )
 
             if config.protections.shields:
-                install_extension(self.root)
+                install_shields(self.root)
             else:
-                remove_extension(self.root)
+                remove_shields(self.root)
+        except (OSError, ValueError):
+            pass
+        try:
+            from .browser_actions import (
+                install_extension as install_actions,
+                remove_extension as remove_actions,
+            )
+
+            if config.protections.selection_actions:
+                install_actions(self.root)
+            else:
+                remove_actions(self.root)
         except (OSError, ValueError):
             pass
         return self.user_js
@@ -1286,5 +1303,6 @@ def protection_summary(config: BrowserConfig) -> List[Tuple[str, bool]]:
         ("No telemetry / sponsored tiles", p.telemetry_off and p.sponsored_off),
         ("Memory saver", p.memory_saver),
         ("Omnify Shields counter", p.shields),
+        ("Browser selection actions", p.selection_actions),
         ("Forget data on close", p.clear_on_close),
     ]

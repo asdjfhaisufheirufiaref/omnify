@@ -1859,4 +1859,43 @@ TRANSLATIONS = {
     ),
     "Add a query after !{name}": "Додайте запит після !{name}",
     "Unsafe URL scheme": "Небезпечна схема URL",
+    "Browser selection actions": "Дії з виділенням у браузері",
+    "Add “Move selection to a new note” and “Solve in Calculator” to the page context menu.": (
+        "Додає «Перемістити виділення в нову нотатку» і "
+        "«Розв'язати в Калькуляторі» до контекстного меню сторінки."
+    ),
+    "Reinstall selection actions": "Перевстановити дії з виділенням",
+    "Select text on any page and use “Move selection to a new note” or “Solve in Calculator” from the context menu. Omnify listens on 127.0.0.1 only; selected text is never sent anywhere else.": (
+        "Виділіть текст на будь-якій сторінці й виберіть у контекстному меню "
+        "«Перемістити виділення в нову нотатку» або «Розв'язати в "
+        "Калькуляторі». Omnify слухає лише 127.0.0.1; виділений текст "
+        "нікуди більше не надсилається."
+    ),
+    "Selection actions ready on 127.0.0.1:{port} — restart the browser after reinstalling.": (
+        "Дії з виділенням готові на 127.0.0.1:{port} — перезапустіть браузер "
+        "після перевстановлення."
+    ),
+    "Selection actions installed — Omnify must stay running to receive them.": (
+        "Дії з виділенням встановлено — Omnify має бути запущений, щоб їх "
+        "приймати."
+    ),
+    "Selection actions are not installed — press “Reinstall selection actions”.": (
+        "Дії з виділенням не встановлено — натисніть «Перевстановити дії з "
+        "виділенням»."
+    ),
+    "Could not install selection actions: {error}": (
+        "Не вдалося встановити дії з виділенням: {error}"
+    ),
+    "Selection actions installed — restart the browser to apply": (
+        "Дії з виділенням встановлено — перезапустіть браузер, щоб застосувати"
+    ),
+    "Notes is not available": "Нотатки недоступні",
+    "Selection saved to a new note": "Виділення збережено в нову нотатку",
+    "Could not save the selection to Notes": (
+        "Не вдалося зберегти виділення в Нотатки"
+    ),
+    "Could not solve the selected text": "Не вдалося розв'язати виділений текст",
+    "Could not handle the browser selection": (
+        "Не вдалося обробити виділення з браузера"
+    ),
 }

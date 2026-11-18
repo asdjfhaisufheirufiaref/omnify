@@ -812,6 +812,26 @@ class CalculatorModule(BaseModule):
         buffer.set_text(text)
         buffer.place_cursor(buffer.get_end_iter())
 
+    def solve(self, expression: str) -> bool:
+        """Evaluate *expression* and show it in the calculator.
+
+        Public entry point for browser selection actions and plugins.  Returns
+        ``True`` when the expression produced a result; calculation errors are
+        shown in the normal result label instead of raising.
+        """
+        value = str(expression or "").strip()
+        if not value or getattr(self, "_input", None) is None:
+            return False
+        self._set_input_text(value)
+        if getattr(self, "_mode", "scientific") != "scientific":
+            self._mode = "scientific"
+            try:
+                self._mode_stack.set_visible_child_name("scientific")
+            except Exception:
+                pass
+        self._evaluate()
+        return self._last_result is not None
+
     def _clear_expression(self) -> None:
         buffer = self._buffer()
         buffer.set_text("")
