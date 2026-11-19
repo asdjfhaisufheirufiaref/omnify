@@ -317,6 +317,74 @@ TRANSLATIONS = {
     "Stopwatch started (keys trigger)": "Секундомір запущено (клавіші)",
 
     # ------------------------------------------------------------------
+    # System Information
+    # ------------------------------------------------------------------
+    "System Information": "Системна інформація",
+    "Hardware, software, storage, network and sensor details — an AIDA64-style system report.": (
+        "Апаратне й програмне забезпечення, накопичувачі, мережа та "
+        "датчики — системний звіт у стилі AIDA64."
+    ),
+    "Hardware": "Обладнання",
+    "Storage": "Накопичувачі",
+    "Software": "Програмне забезпечення",
+    "Sensors": "Датчики",
+    "CPU": "ЦП",
+    "RAM": "ОЗП",
+    "GPU": "ГП",
+    "CPU cores": "Ядра ЦП",
+    "CPU frequency": "Частота ЦП",
+    "CPU cache": "Кеш ЦП",
+    "CPU vendor": "Виробник ЦП",
+    "Motherboard": "Материнська плата",
+    "BIOS": "BIOS",
+    "Swap": "Файл підкачки",
+    "Not configured": "Не налаштовано",
+    "Not detected": "Не виявлено",
+    "Disk": "Диск",
+    "Mount": "Точка монтування",
+    "Battery": "Батарея",
+    "Host name": "Ім’я хоста",
+    "Operating system": "Операційна система",
+    "Kernel": "Ядро",
+    "Architecture": "Архітектура",
+    "Uptime": "Час роботи",
+    "Boot time": "Час завантаження",
+    "Session type": "Тип сесії",
+    "Shell": "Оболонка",
+    "Locale": "Локаль",
+    "Timezone": "Часовий пояс",
+    "Distribution": "Дистрибутив",
+    "Generated": "Створено",
+    "Status": "Стан",
+    "No storage devices detected": "Накопичувачів не виявлено",
+    "No network interfaces detected": "Мережевих інтерфейсів не виявлено",
+    "No hardware sensors detected": "Апаратних датчиків не виявлено",
+    "No GPU data": "Немає даних ГП",
+    "Copy report": "Копіювати звіт",
+    "Save report…": "Зберегти звіт…",
+    "Save system report": "Зберегти системний звіт",
+    "Updated": "Оновлено",
+    "Omnify System Report": "Системний звіт Omnify",
+    "System report copied": "Системний звіт скопійовано",
+    "Could not copy the report: {error}": (
+        "Не вдалося скопіювати звіт: {error}"
+    ),
+    "Could not open the save dialog": "Не вдалося відкрити діалог збереження",
+    "Could not save the report: {error}": (
+        "Не вдалося зберегти звіт: {error}"
+    ),
+    "System report saved to {path}": "Системний звіт збережено: {path}",
+    "{percent}% of memory used": "використано {percent}% пам’яті",
+    "System Information: Summary tab": "Системна інформація: огляд",
+    "System Information: Hardware tab": "Системна інформація: обладнання",
+    "System Information: Storage tab": "Системна інформація: накопичувачі",
+    "System Information: Network tab": "Системна інформація: мережа",
+    "System Information: Software tab": "Системна інформація: програмне забезпечення",
+    "System Information: Sensors tab": "Системна інформація: датчики",
+    "Refresh System Information": "Оновити системну інформацію",
+    "Copy system report": "Копіювати системний звіт",
+
+    # ------------------------------------------------------------------
     # Task Manager / System
     # ------------------------------------------------------------------
     "Processes": "Процеси",

@@ -9,7 +9,7 @@ next session. The student report for practical works is in
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
 calendar, timer, stopwatch, alarm clock, task manager, Settings,
 themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **652 tests**.
+module are implemented. The full headless suite is green: **695 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
@@ -38,7 +38,7 @@ Installed commands:
 - `omnify-browser --tor [URL...]` — standalone Tor Browser.
 
 Installed module ids: `dashboard`, `calculator`, `browser`, `calendar`,
-`timer`, `stopwatch`, `alarm`, `taskmanager`, `notes`, `settings`.
+`timer`, `stopwatch`, `alarm`, `taskmanager`, `sysinfo`, `notes`, `settings`.
 
 Desktop entries are installed under `~/.local/share/applications/`,
 including one entry per module. Autostart resumes timers/stopwatch after
@@ -74,6 +74,10 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
   snooze, custom sound, notifications and ringing banner.
 - **Task manager** — processes, performance, services, startup, users,
   details and safe kill flows.
+- **System information** — an AIDA64-style read-only report with live
+  CPU/RAM/GPU cards and Summary, Hardware, Storage, Network, Software and
+  Sensors sections. All probes are dependency-free, degrade gracefully and
+  can be copied or saved as a text report.
 - **Command center** — a VS Code/Obsidian-style command palette
   (`Ctrl+Shift+P`), quick switcher (`Ctrl+P`) for notes/modules/commands,
   editable shortcuts for every command (including module actions), global
@@ -320,7 +324,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **652 OK**
+- `python3 -m unittest discover -s tests` → **695 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the

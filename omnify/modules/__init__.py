@@ -14,6 +14,7 @@ from .calculator import CalculatorModule
 from .calendar import CalendarModule
 from .dashboard import DashboardModule
 from .stopwatch import StopwatchModule
+from .sysinfo import SystemInfoModule
 from .system import SystemMonitorModule
 from .taskmanager import TaskManagerModule
 from .timer import TimerModule
@@ -21,10 +22,11 @@ from .notes import NotesModule
 
 #: Every tool the app shell shows in the sidebar, in display order.
 #:
-#: ``SystemMonitorModule`` is intentionally not listed: the Task Manager
-#: module replaced the old System tab (its Performance page covers the
-#: same CPU/RAM/GPU/disk/network data), so the sidebar shows one system
-#: tool instead of two. The module itself stays importable for reuse.
+#: ``SystemMonitorModule`` is intentionally not listed: the System
+#: Information module (hardware/software report) and the Task Manager
+#: (performance graphs) cover the old live CPU/RAM/GPU view, so the
+#: sidebar shows two focused system tools instead of three.  The module
+#: itself stays importable for reuse.
 ALL_MODULES = [
     DashboardModule,
     CalculatorModule,
@@ -34,6 +36,7 @@ ALL_MODULES = [
     StopwatchModule,
     AlarmModule,
     TaskManagerModule,
+    SystemInfoModule,
     NotesModule,
 ]
 
@@ -45,6 +48,7 @@ __all__ = [
     "DashboardModule",
     "CalendarModule",
     "StopwatchModule",
+    "SystemInfoModule",
     "SystemMonitorModule",
     "TaskManagerModule",
     "TimerModule",
