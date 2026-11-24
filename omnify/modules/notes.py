@@ -204,7 +204,7 @@ class NotesModule(BaseModule):
         # Кнопка-меню показує, яку папку зараз видно, і дозволяє
         # створювати/видаляти папки.
         folder_button = Gtk.MenuButton(label=tr("All notes"))
-        folder_button.set_tooltip_text("Filter and manage folders")
+        folder_button.set_tooltip_text(tr("Filter and manage folders"))
         folder_button.get_style_context().add_class("notes-folder-button")
         folder_button.set_margin_start(8)
         folder_button.set_margin_end(8)
@@ -227,7 +227,7 @@ class NotesModule(BaseModule):
         # Меню тегів — швидкий спосіб відфільтрувати нотатки без ручного
         # введення #тегу в полі пошуку.
         tag_button = Gtk.MenuButton(label=tr("Tags"))
-        tag_button.set_tooltip_text("Filter notes by tag")
+        tag_button.set_tooltip_text(tr("Filter notes by tag"))
         tag_button.get_style_context().add_class("notes-folder-button")
         tag_button.set_margin_start(8)
         tag_button.set_margin_end(8)
@@ -310,7 +310,7 @@ class NotesModule(BaseModule):
         # Закріплена нотатка завжди стоїть зверху списку. Це не копія і не
         # окремий файл — у Markdown просто з'являється поле pinned: true.
         pin_button = Gtk.ToggleButton(label="📌")
-        pin_button.set_tooltip_text("Pin note")
+        pin_button.set_tooltip_text(tr("Pin note"))
         pin_button.get_style_context().add_class("notes-icon-button")
         pin_button.connect("toggled", self._on_pin_note_toggled)
         editor_header.append(pin_button)
@@ -318,14 +318,14 @@ class NotesModule(BaseModule):
 
         # Кнопка вибору картинки з файлу. Ctrl+V працює і без неї.
         image_button = Gtk.Button(label="🖼")
-        image_button.set_tooltip_text("Insert image (Ctrl+V)")
+        image_button.set_tooltip_text(tr("Insert image (Ctrl+V)"))
         image_button.get_style_context().add_class("notes-icon-button")
         image_button.connect("clicked", self._on_insert_image_clicked)
         editor_header.append(image_button)
 
         # Кнопки вставляють Markdown-шаблони в позицію курсора.
         checklist_button = Gtk.Button(label="☑")
-        checklist_button.set_tooltip_text("Insert checklist")
+        checklist_button.set_tooltip_text(tr("Insert checklist"))
         checklist_button.get_style_context().add_class("notes-icon-button")
         checklist_button.connect(
             "clicked",
@@ -334,7 +334,7 @@ class NotesModule(BaseModule):
         editor_header.append(checklist_button)
 
         table_button = Gtk.Button(label="▦")
-        table_button.set_tooltip_text("Insert table")
+        table_button.set_tooltip_text(tr("Insert table"))
         table_button.get_style_context().add_class("notes-icon-button")
         table_button.connect(
             "clicked",
@@ -396,7 +396,7 @@ class NotesModule(BaseModule):
         tags_row.append(tags_entry)
 
         note_folder_button = Gtk.MenuButton(label="📁")
-        note_folder_button.set_tooltip_text("Move note to folder")
+        note_folder_button.set_tooltip_text(tr("Move note to folder"))
         note_folder_button.get_style_context().add_class("notes-icon-button")
         note_folder_popover = Gtk.Popover()
         note_folder_popover_box = Gtk.Box(
@@ -557,7 +557,7 @@ class NotesModule(BaseModule):
 
         menu_button = Gtk.MenuButton(label="⋮")
         menu_button.get_style_context().add_class("notes-icon-button")
-        menu_button.set_tooltip_text("More actions")
+        menu_button.set_tooltip_text(tr("More actions"))
 
         popover = Gtk.Popover()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)

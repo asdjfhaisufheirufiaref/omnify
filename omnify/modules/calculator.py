@@ -1467,15 +1467,15 @@ class CalculatorModule(BaseModule):
         side.set_size_request(320, -1)
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-        title = Gtk.Label(label="Expressions", xalign=0.0)
+        title = Gtk.Label(label=tr("Expressions"), xalign=0.0)
         title.get_style_context().add_class("omnify-card-title")
         header.append(title)
         header_spacer = Gtk.Box()
         header_spacer.set_hexpand(True)
         header.append(header_spacer)
-        add_button = Gtk.Button(label="+ Add")
+        add_button = Gtk.Button(label=tr("+ Add"))
         add_button.get_style_context().add_class("calc-chip")
-        add_button.set_tooltip_text("Add a function row")
+        add_button.set_tooltip_text(tr("Add a function row"))
         add_button.connect("clicked", lambda _b: self._add_graph_row(""))
         header.append(add_button)
         side.append(header)
@@ -1493,7 +1493,7 @@ class CalculatorModule(BaseModule):
         graph_scroll.set_child(self._graph_rows_box)
         side.append(graph_scroll)
 
-        examples_title = Gtk.Label(label="Try an example", xalign=0.0)
+        examples_title = Gtk.Label(label=tr("Try an example"), xalign=0.0)
         examples_title.get_style_context().add_class("omnify-dim")
         side.append(examples_title)
         examples = Gtk.FlowBox()
@@ -1517,15 +1517,15 @@ class CalculatorModule(BaseModule):
         params_header = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=5
         )
-        params_title = Gtk.Label(label="Parameters", xalign=0.0)
+        params_title = Gtk.Label(label=tr("Parameters"), xalign=0.0)
         params_title.get_style_context().add_class("omnify-card-title")
         params_header.append(params_title)
         params_spacer = Gtk.Box()
         params_spacer.set_hexpand(True)
         params_header.append(params_spacer)
-        reset_params = Gtk.Button(label="Reset")
+        reset_params = Gtk.Button(label=tr("Reset"))
         reset_params.get_style_context().add_class("calc-chip")
-        reset_params.set_tooltip_text("Reset all parameter sliders to 1")
+        reset_params.set_tooltip_text(tr("Reset all parameter sliders to 1"))
         reset_params.connect("clicked", lambda _b: self._reset_params())
         params_header.append(reset_params)
         self._params_panel.append(params_header)
@@ -1666,7 +1666,7 @@ class CalculatorModule(BaseModule):
 
         swatch = Gtk.DrawingArea()
         swatch.set_size_request(14, 14)
-        swatch.set_tooltip_text("Curve colour")
+        swatch.set_tooltip_text(tr("Curve colour"))
         swatch.set_draw_func(
             lambda _area, cr, width, height, rgb=rgb: self._draw_swatch(
                 cr, width, height, rgb
@@ -1678,17 +1678,17 @@ class CalculatorModule(BaseModule):
         entry.set_placeholder_text("y = sin(x)")
         entry.set_text(expression)
         entry.set_hexpand(True)
-        entry.set_tooltip_text("Use x as the variable; y = f(x) is optional")
+        entry.set_tooltip_text(tr("Use x as the variable; y = f(x) is optional"))
         box.append(entry)
 
         visible_button = Gtk.CheckButton()
         visible_button.set_active(visible)
-        visible_button.set_tooltip_text("Show or hide this curve")
+        visible_button.set_tooltip_text(tr("Show or hide this curve"))
         box.append(visible_button)
 
         delete = Gtk.Button(label="×")
         delete.get_style_context().add_class("calc-chip")
-        delete.set_tooltip_text("Remove this expression")
+        delete.set_tooltip_text(tr("Remove this expression"))
         box.append(delete)
 
         row = _GraphRow(

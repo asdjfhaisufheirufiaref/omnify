@@ -302,6 +302,9 @@ TRANSLATIONS = {
     "Timer finished": "Таймер завершено",
     "Timer will start in": "Таймер запуститься через",
     "Timer duration must be positive": "Тривалість таймера має бути додатною",
+    "No idle or paused timer to start": (
+        "Немає неактивного або призупиненого таймера для запуску"
+    ),
     "Set a timer duration first": "Спочатку задайте тривалість таймера",
     "Trigger count must be a positive int": (
         "Кількість спрацьовувань має бути додатним цілим числом"
@@ -1744,6 +1747,7 @@ TRANSLATIONS = {
     "Priorities": "Пріоритети",
     "Schedule": "Розклад",
     "Meeting notes": "Нотатки зустрічі",
+    "Meeting": "Зустріч",
     "Attendees": "Учасники",
     "Agenda": "Порядок денний",
     "Decisions": "Рішення",
@@ -2046,6 +2050,7 @@ TRANSLATIONS = {
     "Saved to Notes": "Збережено в нотатках",
     "The Notes module is not available": "Модуль нотаток недоступний",
     "The Calendar module is not available": "Модуль календаря недоступний",
+    "The Calendar module is not available.": "Модуль календаря недоступний.",
     "Continue": "Продовжити",
     "Copy": "Копіювати",
     "Plugins and AI settings…": "Плагіни й налаштування AI…",
