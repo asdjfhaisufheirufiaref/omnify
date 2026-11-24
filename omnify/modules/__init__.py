@@ -13,6 +13,7 @@ from .browser import BrowserModule
 from .calculator import CalculatorModule
 from .calendar import CalendarModule
 from .dashboard import DashboardModule
+from .files import FileExplorerModule
 from .stopwatch import StopwatchModule
 from .sysinfo import SystemInfoModule
 from .system import SystemMonitorModule
@@ -37,6 +38,7 @@ ALL_MODULES = [
     AlarmModule,
     TaskManagerModule,
     SystemInfoModule,
+    FileExplorerModule,
     NotesModule,
 ]
 
@@ -47,6 +49,7 @@ __all__ = [
     "CalculatorModule",
     "DashboardModule",
     "CalendarModule",
+    "FileExplorerModule",
     "StopwatchModule",
     "SystemInfoModule",
     "SystemMonitorModule",

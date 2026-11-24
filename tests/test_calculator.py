@@ -11,7 +11,12 @@ import unittest
 # Make sure the package is importable when run directly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from omnify.modules.calculator import Calculator, CalcError, _format_number  # noqa: E402
+from omnify.modules.calculator import (  # noqa: E402
+    Calculator,
+    CalcError,
+    CalculatorModule,
+    _format_number,
+)
 
 
 class TestCalculator(unittest.TestCase):
@@ -59,6 +64,25 @@ class TestCalculator(unittest.TestCase):
         for bad in ["((", "2+", "2+*3", "", "foo(1)", "1 2"]:
             with self.assertRaises(CalcError, msg=repr(bad)):
                 self.c.evaluate(bad)
+
+
+class TestHistoryFilter(unittest.TestCase):
+    """The history panel filter is a pure helper, so it is tested headlessly."""
+
+    def test_empty_query_matches_every_entry(self):
+        entry = {"expression": "2 + 3", "exact": "5", "decimal": "5"}
+        self.assertTrue(CalculatorModule.history_matches(entry, ""))
+        self.assertTrue(CalculatorModule.history_matches(entry, "   "))
+
+    def test_matches_expression_and_result(self):
+        entry = {"expression": "sqrt(16)", "exact": "4", "decimal": "4.0"}
+        self.assertTrue(CalculatorModule.history_matches(entry, "SQRT"))
+        self.assertTrue(CalculatorModule.history_matches(entry, "4.0"))
+        self.assertFalse(CalculatorModule.history_matches(entry, "cos"))
+
+    def test_missing_fields_are_safe(self):
+        self.assertTrue(CalculatorModule.history_matches({}, ""))
+        self.assertFalse(CalculatorModule.history_matches({}, "x"))
 
 
 class TestFormat(unittest.TestCase):

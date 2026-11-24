@@ -145,6 +145,7 @@ add_module_entry stopwatch "Stopwatch" "chronometer" "Stopwatch with laps"
 add_module_entry alarm "Alarm clock" "alarm-clock" "Persistent alarm clock"
 add_module_entry taskmanager "Task Manager" "utilities-system-monitor" "Processes and performance"
 add_module_entry sysinfo "System Information" "computer" "Hardware, software and sensor report"
+add_module_entry files "File Explorer" "system-file-manager" "Browse, preview and manage files"
 add_module_entry notes "Notes" "accessories-text-editor" "Local notes and quick capture"
 add_module_entry settings "Settings" "preferences-system" "Themes, language and privacy settings"
 

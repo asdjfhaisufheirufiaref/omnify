@@ -89,6 +89,7 @@ class NotesModule(BaseModule):
         self._row_pins: dict[str, Gtk.Label] = {}
         self._row_tags: dict[str, Gtk.Label] = {}
         self._row_folders: dict[str, Gtk.Label] = {}
+        self._row_metas: dict[str, Gtk.Label] = {}
 
         # Нотатка, яка зараз відкрита в редакторі.
         self._current_note: Note | None = None
@@ -146,29 +147,36 @@ class NotesModule(BaseModule):
         # Ліва панель зі списком нотаток
         # ------------------------------------------------------------------
         root = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        root.get_style_context().add_class("notes-shell")
         root.set_hexpand(True)
         root.set_vexpand(True)
-        root.set_position(280)
+        root.set_position(292)
         root.set_resize_start_child(False)
         root.set_shrink_start_child(False)
 
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        sidebar.set_size_request(230, -1)
+        sidebar.set_size_request(240, -1)
         sidebar.set_vexpand(True)
-        sidebar.get_style_context().add_class("omnify-sidebar")
+        sidebar.get_style_context().add_class("notes-sidebar")
+        self._sidebar_widget = sidebar
 
         sidebar_header = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL,
             spacing=8,
         )
-        sidebar_header.set_margin_top(12)
-        sidebar_header.set_margin_start(8)
-        sidebar_header.set_margin_end(8)
+        sidebar_header.set_margin_top(14)
+        sidebar_header.set_margin_start(10)
+        sidebar_header.set_margin_end(10)
 
-        notes_label = Gtk.Label(label="Notes", xalign=0.0)
-        notes_label.set_hexpand(True)
-        notes_label.get_style_context().add_class("omnify-card-title")
-        sidebar_header.append(notes_label)
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        title_box.set_hexpand(True)
+        notes_label = Gtk.Label(label=tr("Notes"), xalign=0.0)
+        notes_label.get_style_context().add_class("notes-sidebar-title")
+        title_box.append(notes_label)
+        self._notes_count = Gtk.Label(label="", xalign=0.0)
+        self._notes_count.get_style_context().add_class("omni-row-meta")
+        title_box.append(self._notes_count)
+        sidebar_header.append(title_box)
 
         journal_button = Gtk.Button(label="📖")
         journal_button.set_tooltip_text(tr("Open today's journal"))
@@ -176,18 +184,19 @@ class NotesModule(BaseModule):
         journal_button.connect("clicked", self._on_open_journal)
         sidebar_header.append(journal_button)
 
-        new_button = Gtk.Button(label="+")
-        new_button.set_tooltip_text("New note")
-        new_button.get_style_context().add_class("notes-icon-button")
+        new_button = Gtk.Button(label=tr("+ New"))
+        new_button.set_tooltip_text(tr("New note"))
+        new_button.get_style_context().add_class("notes-new-button")
         new_button.connect("clicked", self._on_new_note_clicked)
         sidebar_header.append(new_button)
         sidebar.append(sidebar_header)
 
         # Поле пошуку фільтрує список за назвою, текстом і тегами нотатки.
         search = Gtk.SearchEntry()
-        search.set_placeholder_text("Search notes or #tag")
-        search.set_margin_start(8)
-        search.set_margin_end(8)
+        search.set_placeholder_text(tr("Search notes or #tag"))
+        search.set_margin_start(10)
+        search.set_margin_end(10)
+        search.get_style_context().add_class("notes-search")
         search.connect("search-changed", self._on_search_changed)
         sidebar.append(search)
         self._search_entry = search
@@ -241,32 +250,61 @@ class NotesModule(BaseModule):
         list_scroll = Gtk.ScrolledWindow()
         list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         list_scroll.set_vexpand(True)
+        self._list_scroll = list_scroll
 
         notes_list = Gtk.ListBox()
+        notes_list.get_style_context().add_class("notes-list")
         notes_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         list_scroll.set_child(notes_list)
         sidebar.append(list_scroll)
+
+        notes_empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        notes_empty.get_style_context().add_class("omni-empty")
+        notes_empty.set_margin_start(10)
+        notes_empty.set_margin_end(10)
+        notes_empty.set_margin_bottom(10)
+        notes_empty.set_valign(Gtk.Align.START)
+        empty_icon = Gtk.Image.new_from_icon_name("system-search-symbolic")
+        empty_icon.set_pixel_size(28)
+        empty_icon.set_halign(Gtk.Align.START)
+        empty_icon.get_style_context().add_class("omnify-dim")
+        notes_empty.append(empty_icon)
+        empty_title = Gtk.Label(label=tr("No notes match"), xalign=0.0)
+        empty_title.get_style_context().add_class("omni-row-title")
+        notes_empty.append(empty_title)
+        empty_hint = Gtk.Label(
+            label=tr("Try another search, tag or folder."), xalign=0.0
+        )
+        empty_hint.get_style_context().add_class("omni-row-sub")
+        empty_hint.set_wrap(True)
+        notes_empty.append(empty_hint)
+        notes_empty.set_visible(False)
+        self._notes_empty = notes_empty
+        sidebar.append(notes_empty)
         root.set_start_child(sidebar)
 
         # ------------------------------------------------------------------
         # Права панель: назва, теги, інструменти та текст нотатки
         # ------------------------------------------------------------------
         editor = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        editor.get_style_context().add_class("notes-editor-panel")
         editor.set_hexpand(True)
         editor.set_vexpand(True)
-        editor.set_margin_top(16)
-        editor.set_margin_bottom(16)
-        editor.set_margin_start(24)
-        editor.set_margin_end(24)
+        editor.set_margin_top(12)
+        editor.set_margin_bottom(12)
+        editor.set_margin_start(16)
+        editor.set_margin_end(16)
+        self._editor = editor
 
         editor_header = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=8,
+            spacing=6,
         )
 
         title_entry = Gtk.Entry()
-        title_entry.set_placeholder_text("Untitled")
+        title_entry.set_placeholder_text(tr("Untitled"))
         title_entry.set_hexpand(True)
+        title_entry.get_style_context().add_class("notes-title-entry")
         editor_header.append(title_entry)
 
         # Закріплена нотатка завжди стоїть зверху списку. Це не копія і не
@@ -308,11 +346,20 @@ class NotesModule(BaseModule):
 
         # Preview — це окремий режим, а не ще одне вікно. Він показує
         # заголовки, таблиці, чеклісти та картинки.
-        preview_toggle = Gtk.ToggleButton(label="Preview")
-        preview_toggle.set_tooltip_text("Preview Markdown")
+        preview_toggle = Gtk.ToggleButton(label=tr("Preview"))
+        preview_toggle.set_tooltip_text(tr("Preview Markdown"))
         preview_toggle.get_style_context().add_class("notes-folder-button")
         preview_toggle.connect("toggled", self._on_preview_toggled)
         editor_header.append(preview_toggle)
+
+        focus_button = Gtk.ToggleButton(label=tr("Focus"))
+        focus_button.set_tooltip_text(
+            tr("Hide the list and formatting tools for distraction-free writing")
+        )
+        focus_button.get_style_context().add_class("notes-folder-button")
+        focus_button.connect("toggled", self._on_focus_toggled)
+        editor_header.append(focus_button)
+        self._focus_button = focus_button
 
         # Меню дій із нотаткою: експорт, резервна копія, синхронізація,
         # видалення. Поповер створюємо окремим методом, щоб не захаращувати
@@ -323,13 +370,15 @@ class NotesModule(BaseModule):
 
         # Рядок тегів і кнопка переміщення нотатки в папку.
         tags_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        tags_label = Gtk.Label(label="Tags", xalign=0.0)
-        tags_label.get_style_context().add_class("omnify-dim")
+        tags_row.get_style_context().add_class("notes-tags-row")
+        tags_label = Gtk.Label(label=tr("Tags"), xalign=0.0)
+        tags_label.get_style_context().add_class("omni-chip-label")
         tags_row.append(tags_label)
 
         tags_entry = Gtk.Entry()
-        tags_entry.set_placeholder_text("work, ideas")
+        tags_entry.set_placeholder_text(tr("work, ideas"))
         tags_entry.set_hexpand(True)
+        tags_entry.get_style_context().add_class("notes-tags-entry")
         tags_entry.connect("changed", self._on_tags_changed)
 
         # Підказки тегів: користувач бачить уже відомі теги й не робить
@@ -363,6 +412,7 @@ class NotesModule(BaseModule):
         tags_row.append(note_folder_button)
         editor.append(tags_row)
         self._tag_entry = tags_entry
+        self._tags_row = tags_row
         self._note_folder_button = note_folder_button
         self._note_folder_popover = note_folder_popover
         self._note_folder_popover_box = note_folder_popover_box
@@ -372,17 +422,18 @@ class NotesModule(BaseModule):
         # або вставляють Markdown-шаблон у позицію курсора.
         format_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         format_bar.get_style_context().add_class("notes-format-bar")
+        format_bar.get_style_context().add_class("notes-toolbar")
 
         format_actions = [
-            ("B", "Bold (Ctrl+B)", "bold", "notes-format-bold"),
-            ("I", "Italic (Ctrl+I)", "italic", "notes-format-italic"),
-            ("S", "Strikethrough", "strike", "notes-format-strike"),
-            ("H", "Heading", "heading", ""),
-            ("•", "Bullet list", "bullet", ""),
-            ("1.", "Numbered list", "numbered", ""),
-            ("❝", "Quote", "quote", ""),
-            ("</>", "Inline code", "code", ""),
-            ("🔗", "Link (Ctrl+K)", "link", ""),
+            ("B", tr("Bold (Ctrl+B)"), "bold", "notes-format-bold"),
+            ("I", tr("Italic (Ctrl+I)"), "italic", "notes-format-italic"),
+            ("S", tr("Strikethrough"), "strike", "notes-format-strike"),
+            ("H", tr("Heading"), "heading", ""),
+            ("•", tr("Bullet list"), "bullet", ""),
+            ("1.", tr("Numbered list"), "numbered", ""),
+            ("❝", tr("Quote"), "quote", ""),
+            ("</>", tr("Inline code"), "code", ""),
+            ("🔗", tr("Link (Ctrl+K)"), "link", ""),
         ]
         for label, tooltip, action, style_class in format_actions:
             button = Gtk.Button(label=label)
@@ -395,6 +446,11 @@ class NotesModule(BaseModule):
                 lambda _button, action=action: self._format_selection(action),
             )
             format_bar.append(button)
+        copy_button = Gtk.Button(label="⧉")
+        copy_button.set_tooltip_text(tr("Copy note as Markdown"))
+        copy_button.get_style_context().add_class("notes-format-button")
+        copy_button.connect("clicked", lambda _button: self._copy_markdown())
+        format_bar.append(copy_button)
         editor.append(format_bar)
         self._format_bar = format_bar
 
@@ -407,17 +463,18 @@ class NotesModule(BaseModule):
         body_scroll = Gtk.ScrolledWindow()
         body_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         body_scroll.set_vexpand(True)
-        body_scroll.get_style_context().add_class("calc-input")
+        body_scroll.get_style_context().add_class("notes-body-scroll")
 
         body = Gtk.TextView()
         body.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         body.set_accepts_tab(False)
-        body.set_top_margin(8)
-        body.set_bottom_margin(8)
-        body.set_left_margin(8)
-        body.set_right_margin(8)
+        body.set_top_margin(10)
+        body.set_bottom_margin(10)
+        body.set_left_margin(10)
+        body.set_right_margin(10)
         body.set_hexpand(True)
         body.set_vexpand(True)
+        body.get_style_context().add_class("notes-body")
         body.get_buffer().set_enable_undo(True)
 
         # Перехоплюємо Ctrl+V у фазі CAPTURE, тобто до того, як TextView
@@ -444,11 +501,18 @@ class NotesModule(BaseModule):
         # Нижній рядок показує приблизну кількість слів і стан збереження.
         # Це допомагає не переживати, чи справді текст уже записано.
         status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        stats_label = Gtk.Label(label="0 words · 0 characters", xalign=0.0)
+        status_row.get_style_context().add_class("notes-status-row")
+        stats_label = Gtk.Label(label=tr("0 words · 0 characters"), xalign=0.0)
         stats_label.set_hexpand(True)
         stats_label.get_style_context().add_class("omnify-dim")
         stats_label.get_style_context().add_class("notes-status")
         status_row.append(stats_label)
+
+        autosave_hint = Gtk.Label(label=tr("Autosave on"), xalign=1.0)
+        autosave_hint.get_style_context().add_class("omnify-dim")
+        autosave_hint.get_style_context().add_class("notes-status")
+        autosave_hint.set_tooltip_text(tr("Changes are saved automatically"))
+        status_row.append(autosave_hint)
 
         save_status_label = Gtk.Label(label=tr("Saved"), xalign=1.0)
         save_status_label.get_style_context().add_class("omnify-dim")
@@ -724,6 +788,7 @@ class NotesModule(BaseModule):
         self._row_pins.clear()
         self._row_tags.clear()
         self._row_folders.clear()
+        self._row_metas.clear()
 
         for note in self._notes:
             row = self._make_note_row(note)
@@ -736,6 +801,7 @@ class NotesModule(BaseModule):
             return
         try:
             self._store.save(note)
+            self._update_row_meta(note)
         except Exception as exc:
             self.ctx.notify(tr("Could not save note: {error}", error=exc))
 
@@ -828,10 +894,11 @@ class NotesModule(BaseModule):
 
         row = Gtk.ListBoxRow()
         row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        row_box.set_margin_top(8)
-        row_box.set_margin_bottom(8)
-        row_box.set_margin_start(8)
-        row_box.set_margin_end(8)
+        row_box.get_style_context().add_class("notes-row-card")
+        row_box.set_margin_top(9)
+        row_box.set_margin_bottom(9)
+        row_box.set_margin_start(10)
+        row_box.set_margin_end(10)
 
         title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         pin_label = Gtk.Label(label="📌")
@@ -839,7 +906,8 @@ class NotesModule(BaseModule):
         pin_label.set_visible(bool(note.pinned))
         title_row.append(pin_label)
 
-        title_label = Gtk.Label(label=note.label or "Untitled", xalign=0.0)
+        title_label = Gtk.Label(label=note.label or tr("Untitled"), xalign=0.0)
+        title_label.get_style_context().add_class("notes-row-title")
         title_label.set_ellipsize(Pango.EllipsizeMode.END)
         title_label.set_hexpand(True)
         title_row.append(title_label)
@@ -848,6 +916,7 @@ class NotesModule(BaseModule):
         snippet_label = Gtk.Label(xalign=0.0)
         snippet_label.get_style_context().add_class("notes-row-snippet")
         snippet_label.set_ellipsize(Pango.EllipsizeMode.END)
+        snippet_label.set_max_width_chars(36)
         row_box.append(snippet_label)
 
         tags_label = Gtk.Label(xalign=0.0)
@@ -855,10 +924,16 @@ class NotesModule(BaseModule):
         tags_label.set_ellipsize(Pango.EllipsizeMode.END)
         row_box.append(tags_label)
 
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         folder_label = Gtk.Label(xalign=0.0)
         folder_label.get_style_context().add_class("notes-row-folder")
         folder_label.set_ellipsize(Pango.EllipsizeMode.END)
-        row_box.append(folder_label)
+        footer.append(folder_label)
+        meta_label = Gtk.Label(xalign=1.0)
+        meta_label.set_hexpand(True)
+        meta_label.get_style_context().add_class("notes-row-meta")
+        footer.append(meta_label)
+        row_box.append(footer)
 
         row.set_child(row_box)
 
@@ -869,9 +944,11 @@ class NotesModule(BaseModule):
         self._row_pins[note.id] = pin_label
         self._row_tags[note.id] = tags_label
         self._row_folders[note.id] = folder_label
+        self._row_metas[note.id] = meta_label
         self._update_row_snippet(note)
         self._update_row_tags(note)
         self._update_row_folder(note)
+        self._update_row_meta(note)
         return row
 
     def _parse_tags(self, text: str) -> list[str]:
@@ -929,6 +1006,30 @@ class NotesModule(BaseModule):
             return
         label.set_text(f"📁 {note.folder}" if note.folder else "")
         label.set_visible(bool(note.folder))
+
+    def _note_meta(self, note: Note) -> str:
+        """Return a compact ``reading time · updated`` caption for a row."""
+        words = self._count_words(note.contents)
+        parts: list[str] = []
+        if words:
+            parts.append(
+                tr("{minutes} min read", minutes=max(1, (words + 199) // 200))
+            )
+        try:
+            stamp = datetime.fromisoformat(note.updated_at).strftime("%d.%m")
+        except (TypeError, ValueError):
+            stamp = ""
+        if stamp:
+            parts.append(stamp)
+        return " · ".join(parts)
+
+    def _update_row_meta(self, note: Note) -> None:
+        label = self._row_metas.get(note.id)
+        if label is None:
+            return
+        text = self._note_meta(note)
+        label.set_text(text)
+        label.set_visible(bool(text))
 
     def _show_note(self, note: Note) -> None:
         """Показати нотатку в редакторі."""
@@ -998,6 +1099,7 @@ class NotesModule(BaseModule):
 
     def _refresh_visibility(self) -> None:
         """Показати лише нотатки, які відповідають папці та пошуку."""
+        visible = 0
         for note in self._notes:
             row = self._rows_by_id.get(note.id)
             if row is None:
@@ -1006,7 +1108,25 @@ class NotesModule(BaseModule):
                 self._folder_filter == _ALL_NOTES
                 or note.folder == self._folder_filter
             )
-            row.set_visible(folder_ok and self._matches_search(note))
+            show = folder_ok and self._matches_search(note)
+            row.set_visible(show)
+            if show:
+                visible += 1
+        count_label = getattr(self, "_notes_count", None)
+        if count_label is not None:
+            total = len(self._notes)
+            if self._search_query or self._folder_filter != _ALL_NOTES:
+                count_label.set_text(
+                    tr("{shown} of {total} notes", shown=visible, total=total)
+                )
+            else:
+                count_label.set_text(tr("{count} notes", count=total))
+        empty = getattr(self, "_notes_empty", None)
+        if empty is not None:
+            empty.set_visible(visible == 0)
+        scroller = getattr(self, "_list_scroll", None)
+        if scroller is not None:
+            scroller.set_visible(visible > 0)
 
     def _matches_search(self, note: Note) -> bool:
         """Перевірити одну нотатку на відповідність пошуковому запиту."""
@@ -1635,6 +1755,32 @@ class NotesModule(BaseModule):
                 call("_focus_search"),
                 category="Notes",
                 default_keys=("ctrl+f",),
+                scope="notes",
+            ),
+            Command(
+                "notes.focus_mode",
+                "Toggle focus mode",
+                self._toggle_focus_mode,
+                category="Notes",
+                default_keys=("ctrl+shift+f",),
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.copy_markdown",
+                "Copy note as Markdown",
+                self._copy_markdown,
+                category="Notes",
+                default_keys=("ctrl+shift+c",),
+                scope="notes",
+                when=has_note,
+            ),
+            Command(
+                "notes.random_note",
+                "Open a random note",
+                self._open_random_note,
+                category="Notes",
+                default_keys=("ctrl+shift+r",),
                 scope="notes",
             ),
             Command(
@@ -2424,10 +2570,13 @@ class NotesModule(BaseModule):
             buffer.get_end_iter(),
             True,
         )
+        words = self._count_words(text)
+        minutes = max(1, (words + 199) // 200) if words else 0
         label.set_text(
             tr(
-                "{words} words · {chars} characters",
-                words=self._count_words(text),
+                "{words} words · {minutes} min read · {chars} characters",
+                words=words,
+                minutes=minutes,
                 chars=len(text),
             )
         )
@@ -3256,6 +3405,77 @@ class NotesModule(BaseModule):
         else:
             self._editor_stack.set_visible_child_name("edit")
             self._body_view.grab_focus()
+
+    # ==================================================================
+    # Focus mode and small convenience actions
+    # ==================================================================
+    def _on_focus_toggled(self, button) -> None:
+        """Hide the sidebar and formatting chrome for calm writing."""
+        active = button.get_active()
+        context = button.get_style_context()
+        if active:
+            if not context.has_class("notes-focus-active"):
+                context.add_class("notes-focus-active")
+        else:
+            context.remove_class("notes-focus-active")
+        for widget in (
+            getattr(self, "_sidebar_widget", None),
+            getattr(self, "_format_bar", None),
+            getattr(self, "_tags_row", None),
+        ):
+            if widget is not None:
+                widget.set_visible(not active)
+        if not active:
+            self._body_view.grab_focus()
+
+    def _toggle_focus_mode(self) -> bool:
+        button = getattr(self, "_focus_button", None)
+        if button is None:
+            return False
+        button.set_active(not button.get_active())
+        return True
+
+    def _copy_markdown(self) -> bool:
+        """Copy the current note as raw Markdown, ready for another app."""
+        if self._current_note is None:
+            return False
+        self._sync_current_note()
+        text = str(self._current_note.contents or "")
+        try:
+            from gi.repository import GObject
+
+            clipboard = self._view.get_clipboard()
+            value = GObject.Value()
+            value.init(GObject.TYPE_STRING)
+            value.set_string(text)
+            clipboard.set(value)
+        except Exception as exc:
+            self.ctx.notify(tr("Could not copy Markdown: {error}", error=exc))
+            return False
+        self.ctx.notify(tr("Markdown copied"))
+        return True
+
+    def _open_random_note(self) -> bool:
+        """Open a random visible note — a tiny serendipity button."""
+        import random
+
+        choices = [
+            note
+            for note in self._notes
+            if note.id != getattr(self._current_note, "id", None)
+            and getattr(self._rows_by_id.get(note.id), "get_visible", lambda: True)()
+        ]
+        if not choices:
+            choices = list(self._notes)
+        if not choices:
+            return False
+        note = random.choice(choices)
+        row = self._rows_by_id.get(note.id)
+        if row is None:
+            return False
+        self._notes_list.select_row(row)
+        self._body_view.grab_focus()
+        return True
 
     # ==================================================================
     # Картинки: показ, вибір файлу та вставлення через Ctrl+V

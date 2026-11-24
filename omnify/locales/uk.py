@@ -149,6 +149,25 @@ TRANSLATIONS = {
     "History": "Історія",
     "Digits": "Цифри",
     "Complete:": "Доповнення:",
+    "Functions": "Функції",
+    "Constants": "Константи",
+    "Decimal": "Десятковий",
+    "Enter = evaluate": "Enter = обчислити",
+    "Enter = evaluate · ↑ / ↓ history": "Enter = обчислити · ↑ / ↓ історія",
+    "Pi — 3.14159…": "Пі — 3.14159…",
+    "Euler's number — 2.71828…": "Число Ейлера — 2.71828…",
+    "Tau — 6.28318…": "Тау — 6.28318…",
+    "Golden ratio — 1.61803…": "Золотий перетин — 1.61803…",
+    "Imaginary unit": "Уявна одиниця",
+    "Insert {value}": "Вставити {value}",
+    "Filter history…": "Фільтрувати історію…",
+    "No calculations match": "Жодне обчислення не відповідає",
+    "No calculations yet": "Обчислень ще немає",
+    "Press Enter to evaluate.": "Натисніть Enter, щоб обчислити.",
+    "Try another expression or result.": (
+        "Спробуйте інший вираз або результат."
+    ),
+    "{shown} of {total}": "Показано {shown} з {total}",
     "No calculations yet.\nPress Enter to evaluate.": (
         "Обчислень ще немає.\nНатисніть Enter, щоб обчислити."
     ),
@@ -385,6 +404,156 @@ TRANSLATIONS = {
     "Copy system report": "Копіювати системний звіт",
 
     # ------------------------------------------------------------------
+    # File Explorer
+    # ------------------------------------------------------------------
+    "File Explorer": "Файловий менеджер",
+    "Browse folders, preview files and manage copy, move, rename and trash operations.": (
+        "Перегляд тек, попередній перегляд файлів і керування копіюванням, "
+        "переміщенням, перейменуванням і кошиком."
+    ),
+    "File Explorer: Back": "Файловий менеджер: назад",
+    "File Explorer: Forward": "Файловий менеджер: вперед",
+    "File Explorer: Parent folder": "Файловий менеджер: батьківська тека",
+    "File Explorer: Home": "Файловий менеджер: домашня тека",
+    "File Explorer: Edit location": "Файловий менеджер: змінити розташування",
+    "File Explorer: Filter this folder": "Файловий менеджер: фільтрувати теку",
+    "File Explorer: Toggle hidden files": "Файловий менеджер: приховані файли",
+    "File Explorer: Toggle preview pane": "Файловий менеджер: панель перегляду",
+    "File Explorer: New folder": "Файловий менеджер: нова тека",
+    "File Explorer: New file": "Файловий менеджер: новий файл",
+    "File Explorer: Open terminal here": (
+        "Файловий менеджер: відкрити термінал тут"
+    ),
+    "File Explorer: Rename": "Файловий менеджер: перейменувати",
+    "File Explorer: Copy": "Файловий менеджер: копіювати",
+    "File Explorer: Cut": "Файловий менеджер: вирізати",
+    "File Explorer: Paste": "Файловий менеджер: вставити",
+    "File Explorer: Move to Trash": "Файловий менеджер: перемістити в кошик",
+    "File Explorer: Delete permanently": "Файловий менеджер: видалити назавжди",
+    "File Explorer: Properties": "Файловий менеджер: властивості",
+    "File Explorer: Copy path": "Файловий менеджер: копіювати шлях",
+    "File Explorer: Open in Text Editor": "Файловий менеджер: відкрити в текстовому редакторі",
+    "Refresh File Explorer": "Оновити файловий менеджер",
+    "Back": "Назад",
+    "Forward": "Вперед",
+    "Parent folder": "Батьківська тека",
+    "New folder": "Нова тека",
+    "New file": "Новий файл",
+    "New file.txt": "Новий файл.txt",
+    "File name": "Назва файлу",
+    "File created: {name}": "Створено файл: {name}",
+    "Could not create the file: {error}": (
+        "Не вдалося створити файл: {error}"
+    ),
+    "Open terminal here": "Відкрити термінал тут",
+    "No terminal emulator was found": "Не знайдено емулятор термінала",
+    "Could not open the terminal: {error}": (
+        "Не вдалося відкрити термінал: {error}"
+    ),
+    "Terminal opened in this folder": "Термінал відкрито в цій теці",
+    "Nothing selected": "Нічого не вибрано",
+    "Pick a file or folder to see its details and a preview.": (
+        "Виберіть файл або теку, щоб побачити подробиці й перегляд."
+    ),
+    "Use the context menu to copy, move or delete them together.": (
+        "Скористайтеся контекстним меню, щоб копіювати, перемістити чи "
+        "видалити їх разом."
+    ),
+    "Double-click to open this folder": "Двічі клацніть, щоб відкрити цю теку",
+    "This folder is empty": "Ця тека порожня",
+    "Create a folder or file, or drop something here.": (
+        "Створіть теку чи файл або перетягніть щось сюди."
+    ),
+    "Open with the default app": "Відкрити типовою програмою",
+    "Disk space": "Місце на диску",
+    "{free} free": "Вільно {free}",
+    "{free} free of {total}\n{percent}% used": (
+        "Вільно {free} з {total}\nВикористано {percent}%"
+    ),
+    "Location": "Розташування",
+    "Filter this folder…": "Фільтр у цій теці…",
+    "Hidden": "Приховані",
+    "Show hidden files": "Показувати приховані файли",
+    "Preview": "Перегляд",
+    "Show the preview pane": "Показувати панель перегляду",
+    "Places": "Місця",
+    "File System": "Файлова система",
+    "Size": "Розмір",
+    "Type": "Тип",
+    "Modified": "Змінено",
+    "{count} items": "Елементів: {count}",
+    "{count} selected": "вибрано {count}",
+    "{count} items selected": "Вибрано елементів: {count}",
+    "Select a file to preview": "Виберіть файл для перегляду",
+    "No preview available": "Попередній перегляд недоступний",
+    "Open": "Відкрити",
+    "Open in Text Editor": "Відкрити в текстовому редакторі",
+    "Cut": "Вирізати",
+    "Paste": "Вставити",
+    "Copy path": "Копіювати шлях",
+    "Properties": "Властивості",
+    "{count} item(s) ready to copy": "Готово до копіювання: {count}",
+    "{count} item(s) ready to move": "Готово до переміщення: {count}",
+    "Clipboard is empty": "Буфер обміну порожній",
+    "Pasted {count} item(s)": "Вставлено: {count}",
+    "Paste failed: {error}": "Не вдалося вставити: {error}",
+    "Folder name": "Назва теки",
+    "Folder created: {name}": "Створено теку: {name}",
+    "Could not create the folder: {error}": "Не вдалося створити теку: {error}",
+    "New name": "Нова назва",
+    "Renamed to {name}": "Перейменовано на {name}",
+    "Rename failed: {error}": "Не вдалося перейменувати: {error}",
+    "Move to Trash": "Перемістити в кошик",
+    "Move {count} item(s) to Trash?": "Перемістити в кошик: {count}?",
+    "Moved {count} item(s) to Trash": "Переміщено в кошик: {count}",
+    "Could not move to Trash: {error}": "Не вдалося перемістити в кошик: {error}",
+    "Delete permanently": "Видалити назавжди",
+    "Delete {count} item(s) permanently?": "Видалити назавжди: {count}?",
+    "This cannot be undone.": "Цю дію неможливо скасувати.",
+    "Deleted {count} item(s)": "Видалено: {count}",
+    "Delete failed: {error}": "Не вдалося видалити: {error}",
+    "Path copied": "Шлях скопійовано",
+    "Could not copy the path: {error}": "Не вдалося скопіювати шлях: {error}",
+    "Could not open file: {error}": "Не вдалося відкрити файл: {error}",
+    "Could not open folder: {error}": "Не вдалося відкрити теку: {error}",
+    "Folder not found: {path}": "Теку не знайдено: {path}",
+    "Could not open the file: {error}": "Не вдалося відкрити файл: {error}",
+    "Text Editor is not available": "Текстовий редактор недоступний",
+    "… and {count} more": "… і ще {count}",
+    "Text file": "Текстовий файл",
+    "Markdown document": "Документ Markdown",
+    "Log file": "Файл журналу",
+    "PDF document": "Документ PDF",
+    "Image": "Зображення",
+    "Audio": "Аудіо",
+    "Video": "Відео",
+    "Document": "Документ",
+    "Spreadsheet": "Таблиця",
+    "Presentation": "Презентація",
+    "Source code": "Вихідний код",
+    "Script": "Скрипт",
+    "Web page": "Вебсторінка",
+    "Stylesheet": "Таблиця стилів",
+    "JSON file": "Файл JSON",
+    "Configuration": "Конфігурація",
+    "Executable": "Виконуваний файл",
+    "File": "Файл",
+    "Folder": "Тека",
+    "Folder link": "Посилання на теку",
+    "Symbolic link": "Символічне посилання",
+    "Desktop": "Робочий стіл",
+    "Documents": "Документи",
+    "Music": "Музика",
+    "Pictures": "Зображення",
+    "Videos": "Відео",
+    "Path": "Шлях",
+    "Items": "Елементи",
+    "Permissions": "Права доступу",
+    "Owner": "Власник",
+    "Group": "Група",
+    "Error": "Помилка",
+
+    # ------------------------------------------------------------------
     # Task Manager / System
     # ------------------------------------------------------------------
     "Processes": "Процеси",
@@ -433,6 +602,65 @@ TRANSLATIONS = {
     "User": "Користувач",
     "State": "Стан",
     "Session": "Сесія",
+    "Sessions": "Сесії",
+    "Entries": "Записи",
+    "Sleeping": "Спить",
+    "Zombie": "Зомбі",
+    "Failed": "Збій",
+    "Inactive": "Неактивна",
+    "active": "активна",
+    "enabled": "увімкнено",
+    "disabled": "вимкнено",
+    "Filter": "Фільтр",
+    "Copy PID": "Копіювати PID",
+    "Copy command": "Копіювати команду",
+    "Copy command line": "Копіювати командний рядок",
+    "Copy file path": "Копіювати шлях до файлу",
+    "Copy unit name": "Копіювати назву юніта",
+    "Show details": "Показати подробиці",
+    "Show in Processes": "Показати в процесах",
+    "No sessions found": "Сесій не знайдено",
+    "PID copied": "PID скопійовано",
+    "Command copied": "Команду скопійовано",
+    "Unit name copied": "Назву юніта скопійовано",
+    "Could not copy": "Не вдалося скопіювати",
+    "Search services by unit or description…": (
+        "Пошук служб за юнітом або описом…"
+    ),
+    "Search startup apps by name or command…": (
+        "Пошук автозапуску за назвою або командою…"
+    ),
+    "{shown} of {total} services": "Показано {shown} з {total} служб",
+    "{shown} of {total} entries": "Показано {shown} з {total} записів",
+    "{shown} of {total} processes": "Показано {shown} з {total} процесів",
+    "No services match the filter": "Жодна служба не відповідає фільтру",
+    "Try another search or status pill.": (
+        "Спробуйте інший запит або інший статус."
+    ),
+    "Service management needs a running systemd session.": (
+        "Керування службами потребує запущеної сесії systemd."
+    ),
+    "No startup apps match the filter": "Жоден застосунок не відповідає фільтру",
+    "Clear the search to see every autostart entry.": (
+        "Очистіть пошук, щоб побачити всі записи автозапуску."
+    ),
+    "Apps in ~/.config/autostart will appear here with an on/off switch.": (
+        "Застосунки з ~/.config/autostart з’являться тут із перемикачем."
+    ),
+    "Log in on this machine or check that loginctl is available.": (
+        "Увійдіть у систему або перевірте, чи доступний loginctl."
+    ),
+    "Session {session} · UID {uid} · {state}": (
+        "Сесія {session} · UID {uid} · {state}"
+    ),
+    "Startup: {name} {state}": "Автозапуск: {name} — {state}",
+    "Could not update {name}: {error}": (
+        "Не вдалося оновити {name}: {error}"
+    ),
+    "Start": "Запустити",
+    "Stop": "Зупинити",
+    "Restart": "Перезапустити",
+    "{unit} — {description}": "{unit} — {description}",
     "SIGTERM": "SIGTERM",
     "SIGKILL": "SIGKILL",
 
@@ -1317,6 +1545,13 @@ TRANSLATIONS = {
     "Local notes and quick capture.": "Локальні нотатки та швидкий запис.",
     "Your notes will appear here.": "Тут з'являться ваші нотатки.",
     "New note": "Нова нотатка",
+    "+ New": "+ Нова",
+    "No notes match": "Нотаток не знайдено",
+    "Try another search, tag or folder.": (
+        "Спробуйте інший запит, тег або папку."
+    ),
+    "{shown} of {total} notes": "Показано {shown} з {total} нотаток",
+    "{count} notes": "Нотаток: {count}",
     "Search notes": "Пошук нотаток",
     "Search notes or #tag": "Пошук нотаток або #тег",
     "Filter notes by tag": "Фільтрувати нотатки за тегом",
@@ -1339,6 +1574,39 @@ TRANSLATIONS = {
     "Tag renamed in {count} notes": "Тег перейменовано в нотатках: {count}",
     "Tag removed from {count} notes": "Тег видалено з нотаток: {count}",
     "Untitled": "Без назви",
+    "work, ideas": "робота, ідеї",
+    "Focus": "Фокус",
+    "Hide the list and formatting tools for distraction-free writing": (
+        "Сховати список і панель форматування для зосередженого письма"
+    ),
+    "Copy note as Markdown": "Копіювати нотатку як Markdown",
+    "Markdown copied": "Markdown скопійовано",
+    "Could not copy Markdown: {error}": (
+        "Не вдалося скопіювати Markdown: {error}"
+    ),
+    "Autosave on": "Автозбереження",
+    "Changes are saved automatically": "Зміни зберігаються автоматично",
+    "{minutes} min read": "{minutes} хв читання",
+    "{words} words · {minutes} min read · {chars} characters": (
+        "Слів: {words} · {minutes} хв читання · символів: {chars}"
+    ),
+    "Toggle focus mode": "Перемкнути режим фокусу",
+    "Open a random note": "Відкрити випадкову нотатку",
+    "New": "Нова",
+    "Markdown body": "Тіло Markdown",
+    "Template name": "Назва шаблону",
+    "Template saved": "Шаблон збережено",
+    "Delete template?": "Видалити шаблон?",
+    "Manage templates…": "Керувати шаблонами…",
+    "The note will be created in the current folder. Templates support {{date}}, {{time}}, {{title}} and {{cursor}}.": (
+        "Нотатку буде створено в поточній папці. Шаблони підтримують "
+        "{{date}}, {{time}}, {{title}} і {{cursor}}."
+    ),
+    "Variables: {{date}}, {{time}}, {{datetime}}, {{date:YYYY-MM-DD}}, {{yesterday}}, {{tomorrow}}, {{weekday}}, {{title}}, {{folder}}, {{uuid}}, {{random}}, {{clipboard}}, {{prompt:Question}}, {{cursor}}.": (
+        "Змінні: {{date}}, {{time}}, {{datetime}}, {{date:YYYY-MM-DD}}, "
+        "{{yesterday}}, {{tomorrow}}, {{weekday}}, {{title}}, {{folder}}, "
+        "{{uuid}}, {{random}}, {{clipboard}}, {{prompt:Question}}, {{cursor}}."
+    ),
     "More actions": "Більше дій",
     "Pin note": "Закріпити нотатку",
     "Unpin note": "Відкріпити нотатку",

@@ -7,15 +7,15 @@ next session. The student report for practical works is in
 ## v1 state
 
 Omnify v1 is ready for daily use. The shell, dashboard, calculator,
-calendar, timer, stopwatch, alarm clock, task manager, Settings,
-themes, EN↔UA localization, the standalone browser and the Notes
-module are implemented. The full headless suite is green: **695 tests**.
+calendar, timer, stopwatch, alarm clock, task manager, file explorer,
+Settings, themes, EN↔UA localization, the standalone browser and the
+Notes module are implemented. The full headless suite is green:
+**741 tests**.
 
 Notes can be copied one-way to a folder or merged two-way with another
 notes folder by stable id; deletions are not propagated by the two-way
 merge. Not built yet: cloud/native phone sync with a hosted account,
-real-time collaboration, and optional later tools such as a file manager
-or mail.
+real-time collaboration, mail, and optional remote file storage.
 
 ## Run and install
 
@@ -38,7 +38,8 @@ Installed commands:
 - `omnify-browser --tor [URL...]` — standalone Tor Browser.
 
 Installed module ids: `dashboard`, `calculator`, `browser`, `calendar`,
-`timer`, `stopwatch`, `alarm`, `taskmanager`, `sysinfo`, `notes`, `settings`.
+`timer`, `stopwatch`, `alarm`, `taskmanager`, `sysinfo`, `files`, `notes`,
+`settings`.
 
 Desktop entries are installed under `~/.local/share/applications/`,
 including one entry per module. Autostart resumes timers/stopwatch after
@@ -57,7 +58,8 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
   journal), Notes and backup summary rows, a recent-notes list that opens
   the chosen note, background status and module tiles.
 - **Calculator** — scientific, exact/complex arithmetic, matrices,
-  calculus, units, history, graphing.
+  calculus, units, graphing; quick-constant chips, filterable history and
+  RAD/DEG plus Exact/Decimal badges.
 - **Calendar** — week/day/month, events, layers, recurrence, reminders,
   search, stats and habits; deterministic offline quick add for phrases
   such as “Lunch tomorrow at 13:00” or “Зустріч завтра о 15:30”; optional
@@ -73,7 +75,14 @@ them. The script and its integration tests are in `tests/test_uninstall.py`.
 - **Alarm clock** — persistent alarms, weekday repeats, one-shot alarms,
   snooze, custom sound, notifications and ringing banner.
 - **Task manager** — processes, performance, services, startup, users,
-  details and safe kill flows.
+  details and safe kill flows; state filter pills, stat cards, service and
+  startup search, user cards and process-to-details drill-down.
+- **File explorer** — folder and file browsing with clickable breadcrumbs,
+  free-space card, search, preview, new-file creation and “Open terminal
+  here”, plus safe copy/move/rename/delete flows.
+- **Notes polish** — focus mode, copy-as-Markdown, a random-note action,
+  reading time and word counts, sidebar note count and a styled empty
+  search state.
 - **System information** — an AIDA64-style read-only report with live
   CPU/RAM/GPU cards and Summary, Hardware, Storage, Network, Software and
   Sensors sections. All probes are dependency-free, degrade gracefully and
@@ -164,6 +173,20 @@ managed profile).
 Brave was detected at `~/.config/BraveSoftware/Brave-Browser/Default`.
 Direct Chromium copying is intentionally disabled; use the built-in
 importer for the complete transfer.
+
+## File Explorer module
+
+- Browses the local filesystem with clickable breadcrumbs, a sidebar of
+  home shortcuts, search, a free-space card and a live preview pane.
+- `files.new_file` and `files.terminal` cover quick creation and “Open
+  terminal here”; the terminal is launched with an argv list (never a
+  shell string), so paths cannot inject commands.
+- Copy/move use collision-safe unique names; renames validate empty names
+  and path traversal. Destructive actions ask for confirmation.
+- Pure helpers (`breadcrumb_parts`, `terminal_argv`, `find_terminal`,
+  `disk_usage`, `FileExplorer.create_file`, `FileExplorer.free_space`) are
+  covered by `tests/test_files.py`; GTK behaviour is verified by a
+  Broadway smoke test.
 
 ## Architecture constraints
 
@@ -324,7 +347,7 @@ The Notes module is implemented:
 ## Verification checklist
 
 - `python3 -m py_compile $(find omnify tests -name '*.py')`
-- `python3 -m unittest discover -s tests` → **695 OK**
+- `python3 -m unittest discover -s tests` → **741 OK**
 - `./install.sh` → launchers + app-menu entries created
 - `./uninstall.sh --dry-run` → backups listed, nothing deleted
 - `omnify --module calculator|browser|alarm|settings|...` switches the

@@ -219,6 +219,7 @@ class CalculatorModule(BaseModule):
         self._param_names: List[str] = []
         self._param_widgets: Dict[str, Any] = {}
         self._history_visible = bool(self._settings.get("history_visible", True))
+        self._history_query = ""
         self._mode = str(self._settings.get("mode", "scientific"))
         if self._mode not in ("scientific", "graph"):
             self._mode = "scientific"
@@ -344,14 +345,23 @@ class CalculatorModule(BaseModule):
         from gi.repository import Gtk
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        header.get_style_context().add_class("calc-header")
+
+        tile = Gtk.Box()
+        tile.get_style_context().add_class("omni-icon-tile")
+        icon = Gtk.Image.new_from_icon_name("accessories-calculator-symbolic")
+        icon.set_pixel_size(20)
+        tile.append(icon)
+        header.append(tile)
+
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        title = Gtk.Label(label="Calculator", xalign=0.0)
-        title.get_style_context().add_class("omnify-card-title")
+        title = Gtk.Label(label=tr("Calculator"), xalign=0.0)
+        title.get_style_context().add_class("calc-title")
         subtitle = Gtk.Label(
-            label="Scientific · exact results · graphing · steps",
+            label=tr("Scientific · exact results · graphing · steps"),
             xalign=0.0,
         )
-        subtitle.get_style_context().add_class("omnify-dim")
+        subtitle.get_style_context().add_class("calc-hint")
         title_box.append(title)
         title_box.append(subtitle)
         header.append(title_box)
@@ -361,32 +371,46 @@ class CalculatorModule(BaseModule):
         header.append(spacer)
 
         self._mode_switcher = Gtk.StackSwitcher()
+        self._mode_switcher.get_style_context().add_class("calc-mode-switcher")
         header.append(self._mode_switcher)
 
         self._angle_rad = Gtk.ToggleButton(label="RAD")
         self._angle_deg = Gtk.ToggleButton(label="DEG")
         self._angle_deg.set_group(self._angle_rad)
-        self._angle_rad.set_tooltip_text("Trigonometric functions use radians")
-        self._angle_deg.set_tooltip_text("Trigonometric functions use degrees")
+        self._angle_rad.set_tooltip_text(
+            tr("Trigonometric functions use radians")
+        )
+        self._angle_deg.set_tooltip_text(
+            tr("Trigonometric functions use degrees")
+        )
         if self._calc.angle_degrees:
             self._angle_deg.set_active(True)
         else:
             self._angle_rad.set_active(True)
         self._angle_rad.connect("toggled", self._on_angle_toggled)
         self._angle_deg.connect("toggled", self._on_angle_toggled)
-        header.append(self._angle_rad)
-        header.append(self._angle_deg)
+        self._angle_rad.get_style_context().add_class("calc-angle-toggle")
+        self._angle_deg.get_style_context().add_class("calc-angle-toggle")
+        angle_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        angle_box.get_style_context().add_class("calc-toggle-group")
+        angle_box.append(self._angle_rad)
+        angle_box.append(self._angle_deg)
+        header.append(angle_box)
 
-        self._exact_check = Gtk.CheckButton(label="Exact")
+        self._exact_check = Gtk.CheckButton(label=tr("Exact"))
         self._exact_check.set_active(bool(self._calc.exact_mode))
         self._exact_check.set_tooltip_text(
-            "Prefer exact fractions and symbolic results, with a decimal approximation"
+            tr(
+                "Prefer exact fractions and symbolic results, with a decimal "
+                "approximation"
+            )
         )
+        self._exact_check.get_style_context().add_class("calc-exact")
         self._exact_check.connect("toggled", self._on_exact_toggled)
         header.append(self._exact_check)
 
-        precision_label = Gtk.Label(label="Digits")
-        precision_label.get_style_context().add_class("omnify-dim")
+        precision_label = Gtk.Label(label=tr("Digits"))
+        precision_label.get_style_context().add_class("calc-hint")
         header.append(precision_label)
         self._precision_combo = Gtk.ComboBoxText()
         for value in ("4", "6", "8", "10", "12", "14", "16"):
@@ -399,13 +423,20 @@ class CalculatorModule(BaseModule):
         except ValueError:
             self._precision_combo.set_active(3)
         self._precision_combo.connect("changed", self._on_precision_changed)
-        self._precision_combo.set_tooltip_text("Decimal digits in the result")
+        self._precision_combo.set_tooltip_text(
+            tr("Decimal digits in the result")
+        )
+        self._precision_combo.get_style_context().add_class("calc-precision")
         header.append(self._precision_combo)
 
-        self._history_button = Gtk.ToggleButton(label="History")
+        self._history_button = Gtk.ToggleButton(label=tr("History"))
         self._history_button.set_active(self._history_visible)
         self._history_button.set_tooltip_text(
-            "Show or hide the saved calculation history"
+            tr("Show or hide the saved calculation history")
+        )
+        self._history_button.get_style_context().add_class("calc-chip")
+        self._history_button.get_style_context().add_class(
+            "calc-history-toggle"
         )
         self._history_button.connect("toggled", self._on_history_toggled)
         header.append(self._history_button)
@@ -418,7 +449,9 @@ class CalculatorModule(BaseModule):
         from gi.repository import Gtk
 
         page = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        page.get_style_context().add_class("calc-scientific")
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=9)
+        main.get_style_context().add_class("calc-main")
         main.set_hexpand(True)
 
         main.append(self._build_display_card())
@@ -427,9 +460,9 @@ class CalculatorModule(BaseModule):
         self._suggestion_wrap = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=5
         )
-        self._suggestion_wrap.get_style_context().add_class("omnify-dim")
-        suggestion_label = Gtk.Label(label="Complete:")
-        suggestion_label.get_style_context().add_class("omnify-dim")
+        self._suggestion_wrap.get_style_context().add_class("calc-suggestions")
+        suggestion_label = Gtk.Label(label=tr("Complete:"))
+        suggestion_label.get_style_context().add_class("calc-hint")
         self._suggestion_wrap.append(suggestion_label)
         self._suggestion_box = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=4
@@ -439,6 +472,7 @@ class CalculatorModule(BaseModule):
         main.append(self._suggestion_wrap)
 
         main.append(self._build_function_chips())
+        main.append(self._build_constants_row())
         main.append(self._build_keypad())
         page.append(main)
 
@@ -449,29 +483,34 @@ class CalculatorModule(BaseModule):
     def _build_display_card(self):
         from gi.repository import Gtk, Pango
 
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         card.get_style_context().add_class("calc-display")
         card.set_vexpand(False)
 
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self._expr_label = Gtk.Label(label="Ready", xalign=0.0)
+        self._expr_label = Gtk.Label(label=tr("Ready"), xalign=0.0)
         self._expr_label.get_style_context().add_class("calc-expression")
         self._expr_label.set_ellipsize(Pango.EllipsizeMode.END)
         self._expr_label.set_hexpand(True)
         top.append(self._expr_label)
 
-        copy_result = Gtk.Button(label="Copy result")
-        copy_result.get_style_context().add_class("calc-chip")
-        copy_result.set_tooltip_text("Copy the displayed result")
-        copy_result.connect("clicked", lambda _b: self._copy_result())
-        top.append(copy_result)
-        copy_expression = Gtk.Button(label="Copy expr")
-        copy_expression.get_style_context().add_class("calc-chip")
-        copy_expression.set_tooltip_text("Copy the expression")
-        copy_expression.connect("clicked", lambda _b: self._copy_expression())
-        top.append(copy_expression)
+        self._angle_badge = Gtk.Label(
+            label="DEG" if self._calc.angle_degrees else "RAD",
+            xalign=0.0,
+        )
+        self._angle_badge.get_style_context().add_class("omni-badge")
+        self._angle_badge.get_style_context().add_class("omni-badge-info")
+        top.append(self._angle_badge)
+        self._exact_badge = Gtk.Label(
+            label=tr("Exact") if self._calc.exact_mode else tr("Decimal"),
+            xalign=0.0,
+        )
+        self._exact_badge.get_style_context().add_class("omni-badge")
+        self._exact_badge.get_style_context().add_class("omni-badge-ok")
+        top.append(self._exact_badge)
         card.append(top)
 
+        result_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._result_label = Gtk.Label(label="0", xalign=0.0)
         self._result_label.get_style_context().add_class("calc-result")
         self._result_label.get_style_context().add_class("omnify-mono")
@@ -479,7 +518,22 @@ class CalculatorModule(BaseModule):
         self._result_label.set_wrap(True)
         self._result_label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self._result_label.set_xalign(0.0)
-        card.append(self._result_label)
+        self._result_label.set_hexpand(True)
+        result_row.append(self._result_label)
+
+        copy_result = Gtk.Button(label="⧉")
+        copy_result.get_style_context().add_class("calc-chip")
+        copy_result.get_style_context().add_class("calc-copy")
+        copy_result.set_tooltip_text(tr("Copy the displayed result"))
+        copy_result.connect("clicked", lambda _b: self._copy_result())
+        result_row.append(copy_result)
+        copy_expression = Gtk.Button(label="⌘")
+        copy_expression.get_style_context().add_class("calc-chip")
+        copy_expression.get_style_context().add_class("calc-copy")
+        copy_expression.set_tooltip_text(tr("Copy the expression"))
+        copy_expression.connect("clicked", lambda _b: self._copy_expression())
+        result_row.append(copy_expression)
+        card.append(result_row)
 
         self._secondary_label = Gtk.Label(label="", xalign=0.0)
         self._secondary_label.get_style_context().add_class("calc-secondary")
@@ -489,20 +543,24 @@ class CalculatorModule(BaseModule):
         card.append(self._secondary_label)
 
         bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        bottom.get_style_context().add_class("calc-display-footer")
         self._ans_label = Gtk.Label(label="", xalign=0.0)
-        self._ans_label.get_style_context().add_class("omnify-dim")
+        self._ans_label.get_style_context().add_class("calc-ans")
         self._ans_label.set_selectable(True)
+        self._ans_label.set_hexpand(True)
         bottom.append(self._ans_label)
+        hint = Gtk.Label(label=tr("Enter = evaluate · ↑ / ↓ history"), xalign=1.0)
+        hint.get_style_context().add_class("calc-hint")
+        bottom.append(hint)
         card.append(bottom)
 
-        self._steps_expander = Gtk.Expander(label="Step-by-step")
+        self._steps_expander = Gtk.Expander(label=tr("Step-by-step"))
         self._steps_expander.set_visible(False)
         self._steps_expander.set_margin_top(2)
         self._steps_label = Gtk.Label(label="", xalign=0.0)
         self._steps_label.set_selectable(True)
         self._steps_label.set_wrap(True)
         self._steps_label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
-        self._steps_label.get_style_context().add_class("omnify-dim")
         self._steps_label.get_style_context().add_class("calc-steps")
         self._steps_label.set_margin_top(4)
         self._steps_expander.set_child(self._steps_label)
@@ -512,26 +570,30 @@ class CalculatorModule(BaseModule):
     def _build_input_area(self):
         from gi.repository import Gtk
 
-        area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        area.get_style_context().add_class("calc-input-block")
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        label = Gtk.Label(label="Expression", xalign=0.0)
-        label.get_style_context().add_class("omnify-dim")
+        label = Gtk.Label(label=tr("Expression"), xalign=0.0)
+        label.get_style_context().add_class("calc-input-label")
         header.append(label)
+        hint = Gtk.Label(label=tr("Enter = evaluate"), xalign=0.0)
+        hint.get_style_context().add_class("calc-hint")
+        header.append(hint)
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         header.append(spacer)
         undo = Gtk.Button(label="↶")
-        undo.set_tooltip_text("Undo (Ctrl+Z)")
+        undo.set_tooltip_text(tr("Undo (Ctrl+Z)"))
         undo.get_style_context().add_class("calc-chip")
         undo.connect("clicked", lambda _b: self._buffer_undo())
         header.append(undo)
         redo = Gtk.Button(label="↷")
-        redo.set_tooltip_text("Redo (Ctrl+Y)")
+        redo.set_tooltip_text(tr("Redo (Ctrl+Y)"))
         redo.get_style_context().add_class("calc-chip")
         redo.connect("clicked", lambda _b: self._buffer_redo())
         header.append(redo)
-        clear = Gtk.Button(label="Clear")
-        clear.set_tooltip_text("Clear the expression (Ctrl+L)")
+        clear = Gtk.Button(label=tr("Clear"))
+        clear.set_tooltip_text(tr("Clear the expression (Ctrl+L)"))
         clear.get_style_context().add_class("calc-chip")
         clear.connect("clicked", lambda _b: self._clear_expression())
         header.append(clear)
@@ -540,7 +602,7 @@ class CalculatorModule(BaseModule):
         scrolled = Gtk.ScrolledWindow()
         scrolled.get_style_context().add_class("calc-input")
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        scrolled.set_min_content_height(82)
+        scrolled.set_min_content_height(78)
         scrolled.set_max_content_height(150)
         self._input_scroll = scrolled
         self._input = Gtk.TextView()
@@ -548,8 +610,8 @@ class CalculatorModule(BaseModule):
         self._input.set_monospace(True)
         self._input.set_top_margin(7)
         self._input.set_bottom_margin(7)
-        self._input.set_left_margin(8)
-        self._input.set_right_margin(8)
+        self._input.set_left_margin(10)
+        self._input.set_right_margin(10)
         self._input.set_accepts_tab(False)
         self._input.set_hexpand(True)
         self._input.set_vexpand(True)
@@ -567,7 +629,14 @@ class CalculatorModule(BaseModule):
     def _build_function_chips(self):
         from gi.repository import Gtk
 
+        wrap = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        wrap.get_style_context().add_class("calc-chip-row")
+        label = Gtk.Label(label=tr("Functions"), xalign=0.0)
+        label.get_style_context().add_class("calc-chip-row-label")
+        wrap.append(label)
+
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        box.set_hexpand(True)
         functions = (
             ("det", "det()", 1),
             ("inv", "inv()", 1),
@@ -578,10 +647,12 @@ class CalculatorModule(BaseModule):
             ("convert", 'convert(, "km", "m")', 12),
             ("mod", " mod ", 0),
         )
-        for label, text, offset in functions:
-            button = Gtk.Button(label=label)
+        for label_text, text, offset in functions:
+            button = Gtk.Button(label=label_text)
             button.get_style_context().add_class("calc-chip")
-            button.set_tooltip_text(f"Insert {text.strip()}")
+            button.set_tooltip_text(
+                tr("Insert {value}", value=text.strip())
+            )
             button.connect(
                 "clicked",
                 lambda _b, value=text, back=offset: self._insert_text(
@@ -589,12 +660,45 @@ class CalculatorModule(BaseModule):
                 ),
             )
             box.append(button)
-        return box
+        wrap.append(box)
+        return wrap
+
+    def _build_constants_row(self):
+        from gi.repository import Gtk
+
+        wrap = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        wrap.get_style_context().add_class("calc-chip-row")
+        label = Gtk.Label(label=tr("Constants"), xalign=0.0)
+        label.get_style_context().add_class("calc-chip-row-label")
+        wrap.append(label)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        box.set_hexpand(True)
+        constants = (
+            ("π", "pi", tr("Pi — 3.14159…")),
+            ("e", "e", tr("Euler's number — 2.71828…")),
+            ("τ", "tau", tr("Tau — 6.28318…")),
+            ("φ", "phi", tr("Golden ratio — 1.61803…")),
+            ("i", "i", tr("Imaginary unit")),
+        )
+        for label_text, value, tooltip in constants:
+            button = Gtk.Button(label=label_text)
+            button.get_style_context().add_class("calc-chip")
+            button.get_style_context().add_class("calc-constant")
+            button.set_tooltip_text(tooltip)
+            button.connect(
+                "clicked",
+                lambda _b, text=value: self._insert_text(text),
+            )
+            box.append(button)
+        wrap.append(box)
+        return wrap
 
     def _build_keypad(self):
         from gi.repository import Gtk
 
         grid = Gtk.Grid()
+        grid.get_style_context().add_class("calc-keypad")
         grid.set_column_spacing(6)
         grid.set_row_spacing(6)
         grid.set_column_homogeneous(True)
@@ -626,34 +730,34 @@ class CalculatorModule(BaseModule):
                 ("Ans", "Ans", "fn", 0),
             ),
             (
-                ("7", "7", "", 0),
-                ("8", "8", "", 0),
-                ("9", "9", "", 0),
-                ("÷", "/", "", 0),
+                ("7", "7", "digit", 0),
+                ("8", "8", "digit", 0),
+                ("9", "9", "digit", 0),
+                ("÷", "/", "op", 0),
                 ("(", "(", "", 0),
                 (")", ")", "", 0),
             ),
             (
-                ("4", "4", "", 0),
-                ("5", "5", "", 0),
-                ("6", "6", "", 0),
-                ("×", "*", "", 0),
+                ("4", "4", "digit", 0),
+                ("5", "5", "digit", 0),
+                ("6", "6", "digit", 0),
+                ("×", "*", "op", 0),
                 ("[", "[", "", 0),
                 ("]", "]", "", 0),
             ),
             (
-                ("1", "1", "", 0),
-                ("2", "2", "", 0),
-                ("3", "3", "", 0),
-                ("−", "-", "", 0),
+                ("1", "1", "digit", 0),
+                ("2", "2", "digit", 0),
+                ("3", "3", "digit", 0),
+                ("−", "-", "op", 0),
                 (",", ",", "", 0),
                 ("∫", "integral(, x)", "fn", 4),
             ),
             (
-                ("0", "0", "", 0),
-                (".", ".", "", 0),
+                ("0", "0", "digit", 0),
+                (".", ".", "digit", 0),
                 ("±", "±", "", 0),
-                ("+", "+", "", 0),
+                ("+", "+", "op", 0),
                 ("=", "=", "equals", 0),
                 ("AC", "AC", "danger", 0),
             ),
@@ -668,6 +772,10 @@ class CalculatorModule(BaseModule):
                     button.get_style_context().add_class("calc-key-equals")
                 elif kind == "danger":
                     button.get_style_context().add_class("calc-key-danger")
+                elif kind == "op":
+                    button.get_style_context().add_class("calc-key-op")
+                elif kind == "digit":
+                    button.get_style_context().add_class("calc-key-digit")
                 button.connect(
                     "clicked",
                     lambda _b, value=action, back=offset: self._key_action(
@@ -684,21 +792,31 @@ class CalculatorModule(BaseModule):
         from gi.repository import Gtk
 
         panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        panel.get_style_context().add_class("omnify-card")
-        panel.set_size_request(270, -1)
+        panel.get_style_context().add_class("omni-card")
+        panel.get_style_context().add_class("calc-history-panel")
+        panel.set_size_request(280, -1)
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        title = Gtk.Label(label="History", xalign=0.0)
-        title.get_style_context().add_class("omnify-card-title")
+        title = Gtk.Label(label=tr("History"), xalign=0.0)
+        title.get_style_context().add_class("calc-history-title")
         top.append(title)
+        self._history_count = Gtk.Label(label="", xalign=0.0)
+        self._history_count.get_style_context().add_class("calc-history-count")
+        top.append(self._history_count)
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         top.append(spacer)
-        clear = Gtk.Button(label="Clear")
+        clear = Gtk.Button(label=tr("Clear"))
         clear.get_style_context().add_class("calc-chip")
-        clear.set_tooltip_text("Clear all saved calculations")
+        clear.set_tooltip_text(tr("Clear all saved calculations"))
         clear.connect("clicked", lambda _b: self._clear_history())
         top.append(clear)
         panel.append(top)
+
+        self._history_search = Gtk.SearchEntry()
+        self._history_search.set_placeholder_text(tr("Filter history…"))
+        self._history_search.get_style_context().add_class("calc-history-search")
+        self._history_search.connect("search-changed", self._on_history_search)
+        panel.append(self._history_search)
 
         self._history_scroll = Gtk.ScrolledWindow()
         self._history_scroll.set_policy(
@@ -712,6 +830,21 @@ class CalculatorModule(BaseModule):
         panel.append(self._history_scroll)
         return panel
 
+    def _on_history_search(self, entry) -> None:
+        self._history_query = entry.get_text().strip().casefold()
+        self._render_history()
+
+    @classmethod
+    def history_matches(cls, entry: Dict[str, Any], query: str) -> bool:
+        """Return True when a history entry matches a filter query."""
+        needle = (query or "").strip().casefold()
+        if not needle:
+            return True
+        haystack = " ".join(
+            str(entry.get(key, "")) for key in ("expression", "exact", "decimal")
+        ).casefold()
+        return needle in haystack
+
     def _render_history(self) -> None:
         from gi.repository import Gtk, Pango
 
@@ -720,16 +853,50 @@ class CalculatorModule(BaseModule):
             following = child.get_next_sibling()
             self._history_box.remove(child)
             child = following
-        if not self._history:
-            empty = Gtk.Label(
-                label=tr("No calculations yet.\nPress Enter to evaluate."),
-                xalign=0.0,
+        query = getattr(self, "_history_query", "")
+        entries = [
+            entry for entry in self._history if self.history_matches(entry, query)
+        ]
+        count_label = getattr(self, "_history_count", None)
+        if count_label is not None:
+            if query:
+                count_label.set_text(
+                    tr(
+                        "{shown} of {total}",
+                        shown=len(entries),
+                        total=len(self._history),
+                    )
+                )
+            else:
+                count_label.set_text(str(len(self._history)))
+        if not entries:
+            empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            empty.get_style_context().add_class("calc-history-empty")
+            icon = Gtk.Image.new_from_icon_name("system-search-symbolic")
+            icon.set_pixel_size(26)
+            icon.set_halign(Gtk.Align.START)
+            icon.get_style_context().add_class("omnify-dim")
+            empty.append(icon)
+            title_text = (
+                tr("No calculations match")
+                if query
+                else tr("No calculations yet")
             )
-            empty.get_style_context().add_class("omnify-dim")
-            empty.set_margin_top(6)
+            empty_title = Gtk.Label(label=title_text, xalign=0.0)
+            empty_title.get_style_context().add_class("omni-row-title")
+            empty.append(empty_title)
+            hint_text = (
+                tr("Try another expression or result.")
+                if query
+                else tr("Press Enter to evaluate.")
+            )
+            empty_hint = Gtk.Label(label=hint_text, xalign=0.0)
+            empty_hint.get_style_context().add_class("omni-row-sub")
+            empty_hint.set_wrap(True)
+            empty.append(empty_hint)
             self._history_box.append(empty)
             return
-        for entry in self._history:
+        for entry in entries:
             expression = str(entry.get("expression", ""))
             exact = str(entry.get("exact", ""))
             decimal = str(entry.get("decimal", ""))
@@ -737,21 +904,22 @@ class CalculatorModule(BaseModule):
             button.get_style_context().add_class("calc-history-row")
             button.set_has_frame(False)
             content = Gtk.Box(
-                orientation=Gtk.Orientation.VERTICAL, spacing=1
+                orientation=Gtk.Orientation.VERTICAL, spacing=2
             )
             expression_label = Gtk.Label(
                 label=expression, xalign=0.0
             )
-            expression_label.get_style_context().add_class("calc-expression")
+            expression_label.get_style_context().add_class("calc-history-expr")
             expression_label.set_ellipsize(Pango.EllipsizeMode.END)
             result_text = exact or decimal or "—"
             result_label = Gtk.Label(label=result_text, xalign=0.0)
+            result_label.get_style_context().add_class("calc-history-result")
             result_label.get_style_context().add_class("omnify-mono")
             result_label.set_ellipsize(Pango.EllipsizeMode.END)
             content.append(expression_label)
             content.append(result_label)
             button.set_child(content)
-            button.set_tooltip_text("Load this expression")
+            button.set_tooltip_text(tr("Load this expression"))
             button.connect(
                 "clicked",
                 lambda _b, value=expression: self._load_from_history(value),
@@ -1176,9 +1344,22 @@ class CalculatorModule(BaseModule):
     def _on_exact_toggled(self, button) -> None:
         self._calc.exact_mode = bool(button.get_active())
         self._save_settings()
+        self._update_mode_badges()
         if self._last_result is not None:
             self._render_result(self._last_result)
         self._update_ans_label()
+
+    def _update_mode_badges(self) -> None:
+        angle_badge = getattr(self, "_angle_badge", None)
+        if angle_badge is not None:
+            angle_badge.set_text(
+                "DEG" if self._calc.angle_degrees else "RAD"
+            )
+        exact_badge = getattr(self, "_exact_badge", None)
+        if exact_badge is not None:
+            exact_badge.set_text(
+                tr("Exact") if self._calc.exact_mode else tr("Decimal")
+            )
 
     def _on_precision_changed(self, combo) -> None:
         values = ("4", "6", "8", "10", "12", "14", "16")
@@ -1196,6 +1377,7 @@ class CalculatorModule(BaseModule):
         self._calc.angle_degrees = self._angle_deg.get_active()
         self._settings["angle_degrees"] = self._calc.angle_degrees
         self._save_settings()
+        self._update_mode_badges()
         if self._last_expression:
             try:
                 result = self._calc.evaluate_detailed(self._last_expression)

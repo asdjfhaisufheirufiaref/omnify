@@ -683,6 +683,21 @@ def filter_processes(infos: List["ProcessInfo"], query: str) -> List["ProcessInf
     ]
 
 
+def detail_matches(info: "ProcessInfo", query: str) -> bool:
+    """Filter one process in the Details tab.
+
+    A numeric query is treated as an exact PID so that "Show details"
+    drills into a single process instead of also matching every PID that
+    contains the same digits.
+    """
+    needle = (query or "").strip().lower()
+    if not needle:
+        return True
+    if needle.isdigit():
+        return info.pid == int(needle)
+    return needle in f"{info.pid} {info.name} {info.cmdline}".lower()
+
+
 def _iter_children(container: "Any"):
     """Yield the direct children of a GTK container.
 
@@ -1727,6 +1742,13 @@ class TaskManagerModule(BaseModule):
         self._proc_info: Dict[int, ProcessInfo] = {}
         self._headers: Dict[str, Dict[str, Any]] = {}
         self._core_rows: List[Any] = []
+        self._proc_filter = "all"
+        self._detail_filter = "all"
+        self._services_filter = "all"
+        self._services_query = ""
+        self._services_data: List[Dict[str, Any]] = []
+        self._startup_query = ""
+        self._startup_data: List[StartupEntry] = []
         self._last: Dict[str, Any] = {
             "processes": [],
             "cpu": None,
@@ -1754,10 +1776,12 @@ class TaskManagerModule(BaseModule):
 
         # Tab row (radio ToggleButtons, like the sidebar).
         tabs_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        tabs_box.get_style_context().add_class("tm-tabbar")
         first_button = None
         self._tab_buttons: Dict[str, Any] = {}
         for key, label in self._TABS:
-            button = Gtk.ToggleButton(label=label)
+            button = Gtk.ToggleButton(label=tr(label))
+            button.get_style_context().add_class("tm-tab")
             self._tab_buttons[key] = button
             if first_button is None:
                 first_button = button
@@ -1769,6 +1793,7 @@ class TaskManagerModule(BaseModule):
         first_button.set_active(True)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        root.get_style_context().add_class("omni-page")
         root.set_margin_top(12)
         root.set_margin_bottom(12)
         root.set_margin_start(12)
@@ -1801,6 +1826,183 @@ class TaskManagerModule(BaseModule):
         label.get_style_context().add_class("omnify-dim")
         label.set_ellipsize(Pango.EllipsizeMode.END)
         return label
+
+    def _stat_card(self, label: str) -> Tuple["Any", "Any"]:
+        """A compact stat card; returns ``(card, value_label)``."""
+        from gi.repository import Gtk
+
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        card.get_style_context().add_class("omni-stat")
+        value = Gtk.Label(label="—", xalign=0.0)
+        value.get_style_context().add_class("omni-stat-value")
+        caption = Gtk.Label(label=tr(label), xalign=0.0)
+        caption.get_style_context().add_class("omni-stat-label")
+        card.append(value)
+        card.append(caption)
+        return card, value
+
+    def _filter_pills(self, options, active: str, callback) -> Tuple["Any", Dict[str, "Any"]]:
+        """Build a radio group of filter pills and return ``(box, buttons)``."""
+        from gi.repository import Gtk
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        box.get_style_context().add_class("omni-pill-row")
+        first = None
+        buttons: Dict[str, Any] = {}
+        for key, label in options:
+            button = Gtk.ToggleButton(label=tr(label))
+            button.get_style_context().add_class("omni-pill")
+            button.set_tooltip_text(tr("Filter"))
+            if first is None:
+                first = button
+                if key == active:
+                    button.set_active(True)
+            else:
+                button.set_group(first)
+            button.connect(
+                "toggled", self._on_pill_toggled, key, callback
+            )
+            box.append(button)
+            buttons[key] = button
+        return box, buttons
+
+    def _on_pill_toggled(self, button, key: str, callback) -> None:
+        if button.get_active():
+            callback(key)
+
+    def _empty_row(self, title: str, hint: str = "", icon: str = "dialog-information-symbolic"):
+        """A non-selectable empty-state row for any of the lists."""
+        from gi.repository import Gtk
+
+        row = Gtk.ListBoxRow()
+        row.set_activatable(False)
+        row.set_selectable(False)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        box.get_style_context().add_class("omni-empty")
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        image = Gtk.Image.new_from_icon_name(icon)
+        image.set_pixel_size(30)
+        image.set_halign(Gtk.Align.START)
+        image.get_style_context().add_class("omnify-dim")
+        box.append(image)
+        headline = Gtk.Label(label=title, xalign=0.0)
+        headline.get_style_context().add_class("omni-row-title")
+        headline.set_wrap(True)
+        box.append(headline)
+        if hint:
+            detail = Gtk.Label(label=hint, xalign=0.0)
+            detail.get_style_context().add_class("omni-row-sub")
+            detail.set_wrap(True)
+            box.append(detail)
+        row.set_child(box)
+        return row
+
+    @staticmethod
+    def _clear_list(listbox) -> None:
+        if listbox is None:
+            return
+        while True:
+            child = listbox.get_first_child()
+            if child is None:
+                break
+            listbox.remove(child)
+
+    def _badge(self, text: str, kind: str = "") -> "Any":
+        from gi.repository import Gtk
+
+        label = Gtk.Label(label=tr(text), xalign=0.0)
+        label.get_style_context().add_class("omni-badge")
+        if kind:
+            label.get_style_context().add_class(f"omni-badge-{kind}")
+        return label
+
+    def _set_badge(self, badge, text: str, kind: str = "") -> None:
+        context = badge.get_style_context()
+        for name in ("ok", "warn", "bad", "info"):
+            context.remove_class(f"omni-badge-{name}")
+        if kind:
+            context.add_class(f"omni-badge-{kind}")
+        badge.set_label(tr(text))
+
+    def _set_metric(self, label, value: float, hot: float, warm: float) -> None:
+        context = label.get_style_context()
+        for name in ("tm-metric-hot", "tm-metric-warm", "tm-metric-cool"):
+            context.remove_class(name)
+        if value >= hot:
+            context.add_class("tm-metric-hot")
+        elif value >= warm:
+            context.add_class("tm-metric-warm")
+
+    @staticmethod
+    def _state_matches(info: "ProcessInfo", key: str) -> bool:
+        if key == "running":
+            return info.state.startswith(("R", "D"))
+        if key == "sleeping":
+            return info.state.startswith(("S", "I"))
+        if key == "zombie":
+            return info.state.startswith("Z")
+        return True
+
+    def _copy_text(self, text: str, message: str) -> bool:
+        if not text:
+            return False
+        try:
+            from gi.repository import GObject
+
+            clipboard = self._root.get_clipboard()
+            value = GObject.Value()
+            value.init(GObject.TYPE_STRING)
+            value.set_string(text)
+            clipboard.set(value)
+        except Exception as exc:
+            self.ctx.notify(f"{tr('Could not copy')}: {exc}")
+            return False
+        self.ctx.notify(tr(message))
+        return True
+
+    def _show_process_details(self, pid: int) -> bool:
+        if getattr(self, "_detail_search", None) is None:
+            return False
+        self._detail_search.set_text(str(pid))
+        self._on_detail_search(self._detail_search)
+        button = getattr(self, "_tab_buttons", {}).get("details")
+        if button is not None:
+            button.set_active(True)
+        else:
+            self._stack.set_visible_child_name("details")
+            self._refresh_page("details")
+        return True
+
+    def _show_in_processes(self, pid: int) -> bool:
+        if getattr(self, "_proc_list", None) is None:
+            return False
+        button = getattr(self, "_tab_buttons", {}).get("processes")
+        if button is not None:
+            button.set_active(True)
+        else:
+            self._stack.set_visible_child_name("processes")
+            self._refresh_page("processes")
+        entry = self._proc_rows.get(pid)
+        if entry is not None:
+            self._proc_list.select_row(entry[0])
+            entry[0].grab_focus()
+        return True
+
+    def _on_proc_activated(self, _listbox, row) -> None:
+        pid = getattr(row, "_omnify_pid", None)
+        if pid is not None:
+            self._show_process_details(pid)
+
+    def _on_proc_filter(self, key: str) -> None:
+        self._proc_filter = key
+        self._sync_proc_rows(self._last.get("processes", []))
+
+    def _on_detail_filter(self, key: str) -> None:
+        self._detail_filter = key
+        self._sync_detail_rows(self._last.get("processes", []))
 
     def _mono_label(self, text: str = "") -> "Any":
         from gi.repository import Gtk
@@ -1848,18 +2050,50 @@ class TaskManagerModule(BaseModule):
         from gi.repository import Gtk
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.get_style_context().add_class("omni-page")
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        toolbar.get_style_context().add_class("tm-toolbar")
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._proc_search = Gtk.SearchEntry()
         self._proc_search.set_hexpand(True)
-        self._proc_search.set_placeholder_text("Search by name or command line…")
+        self._proc_search.set_placeholder_text(tr("Search by name or command line…"))
         self._proc_search.connect("search-changed", self._on_proc_search)
         header.append(self._proc_search)
-        end_button = Gtk.Button(label="End task")
+
+        filters, self._proc_filter_buttons = self._filter_pills(
+            (
+                ("all", "All"),
+                ("running", "Running"),
+                ("sleeping", "Sleeping"),
+                ("zombie", "Zombie"),
+            ),
+            "all",
+            self._on_proc_filter,
+        )
+        header.append(filters)
+
+        end_button = Gtk.Button(label=tr("End task"))
         end_button.get_style_context().add_class("omnify-danger")
         end_button.connect("clicked", self._on_end_task_clicked)
         header.append(end_button)
-        page.append(header)
+        toolbar.append(header)
+
+        stats = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        stats.get_style_context().add_class("omni-stats")
+        self._proc_stats: Dict[str, Any] = {}
+        for key, label in (
+            ("total", "Processes"),
+            ("threads", "Threads"),
+            ("cpu", "CPU"),
+            ("mem", "Memory"),
+        ):
+            card, value = self._stat_card(label)
+            stats.append(card)
+            self._proc_stats[key] = value
+        toolbar.append(stats)
+        page.append(toolbar)
 
         page.append(self._column_header("processes"))
 
@@ -1869,7 +2103,10 @@ class TaskManagerModule(BaseModule):
         scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scroller.set_vexpand(True)
         self._proc_list = Gtk.ListBox()
+        self._proc_list.get_style_context().add_class("tm-list")
         self._proc_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self._proc_list.set_activate_on_single_click(False)
+        self._proc_list.connect("row-activated", self._on_proc_activated)
         scroller.set_child(self._proc_list)
         page.append(scroller)
         return page
@@ -1880,19 +2117,32 @@ class TaskManagerModule(BaseModule):
         from gi.repository import Pango
 
         row = Gtk.ListBoxRow()
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        box.set_margin_top(3)
-        box.set_margin_bottom(3)
-        box.set_margin_start(8)
-        box.set_margin_end(8)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        box.set_margin_top(4)
+        box.set_margin_bottom(4)
+        box.set_margin_start(7)
+        box.set_margin_end(9)
+
+        tile = Gtk.Box()
+        tile.get_style_context().add_class("omni-icon-tile")
+        icon = Gtk.Image.new_from_icon_name("application-x-executable-symbolic")
+        icon.set_pixel_size(16)
+        tile.append(icon)
+        box.append(tile)
 
         name_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         name_box.set_hexpand(True)
+        name_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         name_label = Gtk.Label(label=info.name, xalign=0.0)
+        name_label.get_style_context().add_class("tm-name")
         name_label.set_ellipsize(Pango.EllipsizeMode.END)
-        name_box.append(name_label)
+        name_label.set_hexpand(True)
+        name_row.append(name_label)
+        state_badge = self._badge(info.state, self._state_kind(info.state))
+        name_row.append(state_badge)
+        name_box.append(name_row)
         sub_label = Gtk.Label(label="", xalign=0.0)
-        sub_label.get_style_context().add_class("omnify-dim")
+        sub_label.get_style_context().add_class("tm-cmd")
         sub_label.set_ellipsize(Pango.EllipsizeMode.END)
         name_box.append(sub_label)
         box.append(name_box)
@@ -1908,6 +2158,7 @@ class TaskManagerModule(BaseModule):
         labels: Dict[str, Any] = {
             "name": name_label,
             "cmd": sub_label,
+            "state": state_badge,
             "pid": column(6, str(info.pid)),
             "user": column(9, info.user, mono=False),
             "cpu": column(7, "0.0%"),
@@ -1916,6 +2167,8 @@ class TaskManagerModule(BaseModule):
             "net": column(15, "-"),
             "gpu": column(9, "-"),
         }
+        for key in ("cpu", "mem"):
+            labels[key].get_style_context().add_class("tm-metric")
         for key in ("pid", "user", "cpu", "mem", "disk", "net", "gpu"):
             box.append(labels[key])
         row.set_child(box)
@@ -1926,14 +2179,24 @@ class TaskManagerModule(BaseModule):
         row.add_controller(gesture)
         return row, labels
 
+    @staticmethod
+    def _state_kind(state: str) -> str:
+        if state.startswith(("R", "D")):
+            return "info"
+        if state.startswith("Z"):
+            return "bad"
+        return ""
+
     def _update_proc_row(self, row, labels: Dict[str, Any], info: ProcessInfo) -> None:
         """Push the latest values of *info* into an existing row."""
         labels["name"].set_label(info.name)
         labels["cmd"].set_label(info.cmdline)
+        self._set_badge(labels["state"], info.state, self._state_kind(info.state))
         labels["pid"].set_label(str(info.pid))
         labels["user"].set_label(info.user)
         labels["cpu"].set_label(f"{info.cpu_percent:.1f}%")
         labels["mem"].set_label(format_size(info.rss_kb))
+        self._set_metric(labels["cpu"], info.cpu_percent, 50.0, 15.0)
         if info.disk_speed is None:
             labels["disk"].set_label("-")
         else:
@@ -1952,7 +2215,9 @@ class TaskManagerModule(BaseModule):
             labels["gpu"].set_label(f"{info.gpu_vram_mib:.0f} MiB")
         tip = (
             f"PID {info.pid} · {info.user} · state {info.state} · "
-            f"{info.threads} threads · up {format_uptime(info.uptime_seconds)}"
+            f"{info.threads} threads · up {format_uptime(info.uptime_seconds)}\n"
+            f"{info.cmdline}\n"
+            "Double-click for details; right-click for actions."
         )
         if info.disk_read_kib_s is not None or info.disk_write_kib_s is not None:
             tip += (
@@ -1976,16 +2241,30 @@ class TaskManagerModule(BaseModule):
                 self._proc_rows[info.pid] = (row, labels)
         key, desc = self._sort["processes"]
         key_fn = self._PROC_KEY_FNS[key]
-        visible = {info.pid for info in filter_processes(infos, self._query)}
+        visible = {
+            info.pid
+            for info in filter_processes(infos, self._query)
+            if self._state_matches(info, self._proc_filter)
+        }
         ordered = sorted_by(infos, key_fn, desc)
         for info in ordered:
             row, labels = self._proc_rows[info.pid]
             self._update_proc_row(row, labels, info)
             self._proc_info[info.pid] = info
             row.set_visible(info.pid in visible)
+        self._update_process_stats(infos, len(visible))
         self._reorder_if_changed(
             self._proc_list, self._proc_rows, [info.pid for info in ordered]
         )
+
+    def _update_process_stats(self, infos: List[ProcessInfo], visible: int) -> None:
+        stats = getattr(self, "_proc_stats", None)
+        if not stats:
+            return
+        stats["total"].set_label(str(len(infos)))
+        stats["threads"].set_label(str(sum(info.threads for info in infos)))
+        stats["cpu"].set_label(f"{sum(info.cpu_percent for info in infos):.0f}%")
+        stats["mem"].set_label(format_size(sum(info.rss_kb for info in infos)))
 
     def _reorder_if_changed(self, listbox, rows, order: List[int]) -> None:
         """Re-append rows to match *order* — but only when it changed.
@@ -2028,14 +2307,41 @@ class TaskManagerModule(BaseModule):
         from gi.repository import Gtk
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.get_style_context().add_class("omni-page")
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        toolbar.get_style_context().add_class("tm-toolbar")
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._detail_search = Gtk.SearchEntry()
         self._detail_search.set_hexpand(True)
-        self._detail_search.set_placeholder_text("Filter by PID, name or command line…")
+        self._detail_search.set_placeholder_text(
+            tr("Filter by PID, name or command line…")
+        )
         self._detail_search.connect("search-changed", self._on_detail_search)
         header.append(self._detail_search)
-        page.append(header)
+
+        filters, self._detail_filter_buttons = self._filter_pills(
+            (
+                ("all", "All"),
+                ("running", "Running"),
+                ("sleeping", "Sleeping"),
+                ("zombie", "Zombie"),
+            ),
+            "all",
+            self._on_detail_filter,
+        )
+        header.append(filters)
+
+        clear_button = Gtk.Button(label=tr("Clear"))
+        clear_button.get_style_context().add_class("omni-pill")
+        clear_button.connect("clicked", self._clear_detail_search)
+        header.append(clear_button)
+        toolbar.append(header)
+
+        self._detail_note = self._dim_label()
+        toolbar.append(self._detail_note)
+        page.append(toolbar)
 
         page.append(self._column_header("details"))
 
@@ -2043,7 +2349,8 @@ class TaskManagerModule(BaseModule):
         scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scroller.set_vexpand(True)
         self._detail_list = Gtk.ListBox()
-        self._detail_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self._detail_list.get_style_context().add_class("tm-list")
+        self._detail_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         scroller.set_child(self._detail_list)
         page.append(scroller)
         return page
@@ -2054,8 +2361,9 @@ class TaskManagerModule(BaseModule):
 
         row = Gtk.ListBoxRow()
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        box.set_margin_top(2)
-        box.set_margin_bottom(2)
+        box.get_style_context().add_class("tm-detail-row")
+        box.set_margin_top(3)
+        box.set_margin_bottom(3)
         box.set_margin_start(8)
         box.set_margin_end(8)
 
@@ -2083,10 +2391,15 @@ class TaskManagerModule(BaseModule):
         cmdline = Gtk.Label(label="", xalign=0.0)
         cmdline.set_hexpand(True)
         cmdline.set_ellipsize(Pango.EllipsizeMode.END)
-        cmdline.get_style_context().add_class("omnify-dim")
+        cmdline.get_style_context().add_class("tm-cmd")
         box.append(cmdline)
         labels["cmdline"] = cmdline
         row.set_child(box)
+
+        gesture = Gtk.GestureClick()
+        gesture.set_button(3)
+        gesture.connect("pressed", self._on_detail_right_press, info.pid, row)
+        row.add_controller(gesture)
         return row, labels
 
     def _update_detail_row(self, row, labels: Dict[str, Any], info: ProcessInfo) -> None:
@@ -2128,11 +2441,21 @@ class TaskManagerModule(BaseModule):
         key_fn = self._DETAIL_KEY_FNS[key]
         query = self._detail_query()
         ordered = sorted_by(infos, key_fn, desc)
+        visible = 0
         for info in ordered:
             row, labels = self._detail_rows[info.pid]
             self._update_detail_row(row, labels, info)
-            haystack = f"{info.pid} {info.name} {info.cmdline}".lower()
-            row.set_visible(not query or query in haystack)
+            show = detail_matches(info, query) and self._state_matches(
+                info, self._detail_filter
+            )
+            row.set_visible(show)
+            if show:
+                visible += 1
+        note = getattr(self, "_detail_note", None)
+        if note is not None:
+            note.set_label(
+                tr("{shown} of {total} processes", shown=visible, total=len(infos))
+            )
         self._reorder_if_changed(
             self._detail_list, self._detail_rows, [info.pid for info in ordered]
         )
@@ -2487,63 +2810,184 @@ class TaskManagerModule(BaseModule):
         from gi.repository import Gtk
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.get_style_context().add_class("omni-page")
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        toolbar.get_style_context().add_class("tm-toolbar")
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self._services_note = self._dim_label()
-        self._services_note.set_hexpand(True)
-        header.append(self._services_note)
-        refresh_button = Gtk.Button(label="Refresh")
+        self._services_search = Gtk.SearchEntry()
+        self._services_search.set_hexpand(True)
+        self._services_search.set_placeholder_text(
+            tr("Search services by unit or description…")
+        )
+        self._services_search.connect("search-changed", self._on_service_search)
+        header.append(self._services_search)
+
+        filters, self._services_filter_buttons = self._filter_pills(
+            (
+                ("all", "All"),
+                ("running", "Running"),
+                ("failed", "Failed"),
+                ("inactive", "Inactive"),
+            ),
+            "all",
+            self._on_service_filter,
+        )
+        header.append(filters)
+
+        refresh_button = Gtk.Button(label=tr("Refresh"))
+        refresh_button.get_style_context().add_class("omni-pill")
         refresh_button.connect("clicked", self._load_services)
         header.append(refresh_button)
-        page.append(header)
+        toolbar.append(header)
+
+        stats = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        stats.get_style_context().add_class("omni-stats")
+        self._services_stats: Dict[str, Any] = {}
+        for key, label in (
+            ("total", "Services"),
+            ("running", "Running"),
+            ("failed", "Failed"),
+        ):
+            card, value = self._stat_card(label)
+            stats.append(card)
+            self._services_stats[key] = value
+        toolbar.append(stats)
+
+        self._services_note = self._dim_label()
+        toolbar.append(self._services_note)
+        page.append(toolbar)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.set_vexpand(True)
         self._services_list = Gtk.ListBox()
+        self._services_list.get_style_context().add_class("tm-list")
         self._services_list.set_selection_mode(Gtk.SelectionMode.NONE)
         scroller.set_child(self._services_list)
         page.append(scroller)
         return page
 
     def _load_services(self, _button=None) -> None:
-        from gi.repository import Gtk
-        from gi.repository import Pango
-
-        services = self._model.services()
-        for child in list(_iter_children(self._services_list)):
-            self._services_list.remove(child)
-        if not services:
+        self._services_data = self._model.services()
+        stats = getattr(self, "_services_stats", None)
+        if stats:
+            stats["total"].set_label(str(len(self._services_data)))
+            stats["running"].set_label(
+                str(sum(1 for svc in self._services_data if svc["active"] == "active"))
+            )
+            stats["failed"].set_label(
+                str(
+                    sum(
+                        1
+                        for svc in self._services_data
+                        if svc["active"] == "failed" or svc["sub"] == "failed"
+                    )
+                )
+            )
+        if not self._services_data:
             self._services_note.set_label(tr("systemd not available"))
+            self._clear_list(self._services_list)
+            self._services_list.append(
+                self._empty_row(
+                    tr("systemd not available"),
+                    tr("Service management needs a running systemd session."),
+                    "dialog-warning-symbolic",
+                )
+            )
             return
+        self._render_services()
+
+    def _service_matches(self, svc: Dict[str, Any]) -> bool:
+        query = self._services_query.lower()
+        if query:
+            haystack = f"{svc['unit']} {svc['description']} {svc['active']}".lower()
+            if query not in haystack:
+                return False
+        if self._services_filter == "running":
+            return svc["active"] == "active"
+        if self._services_filter == "failed":
+            return svc["active"] == "failed" or svc["sub"] == "failed"
+        if self._services_filter == "inactive":
+            return svc["active"] not in ("active", "failed")
+        return True
+
+    def _render_services(self) -> None:
+        from gi.repository import Gtk, Pango
+
+        self._clear_list(self._services_list)
+        visible = [svc for svc in self._services_data if self._service_matches(svc)]
         self._services_note.set_label(
-            tr("{count} services", count=len(services))
+            tr(
+                "{shown} of {total} services",
+                shown=len(visible),
+                total=len(self._services_data),
+            )
         )
-        for svc in services:
+        if not visible:
+            self._services_list.append(
+                self._empty_row(
+                    tr("No services match the filter"),
+                    tr("Try another search or status pill."),
+                    "system-search-symbolic",
+                )
+            )
+            return
+        for svc in visible:
             row = Gtk.ListBoxRow()
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            box.set_margin_top(3)
-            box.set_margin_bottom(3)
-            box.set_margin_start(8)
-            box.set_margin_end(8)
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+            box.get_style_context().add_class("tm-service-row")
+            box.set_margin_top(4)
+            box.set_margin_bottom(4)
+            box.set_margin_start(7)
+            box.set_margin_end(9)
+
+            tile = Gtk.Box()
+            tile.get_style_context().add_class("omni-icon-tile")
+            active = svc["active"] == "active"
+            if not active:
+                tile.get_style_context().add_class("omni-icon-tile-neutral")
+            icon = Gtk.Image.new_from_icon_name("system-run-symbolic")
+            icon.set_pixel_size(16)
+            tile.append(icon)
+            box.append(tile)
+
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            text.set_hexpand(True)
             unit = Gtk.Label(label=svc["unit"], xalign=0.0)
+            unit.get_style_context().add_class("tm-service-unit")
             unit.set_ellipsize(Pango.EllipsizeMode.END)
-            unit.set_width_chars(24)
-            box.append(unit)
-            status = Gtk.Label(label=f"{svc['active']} ({svc['sub']})", xalign=0.0)
-            status.get_style_context().add_class("omnify-dim")
-            status.set_width_chars(18)
-            box.append(status)
-            pid = Gtk.Label(label=str(svc.get("pid") or "-"), xalign=0.0)
-            pid.get_style_context().add_class("omnify-mono")
-            pid.set_width_chars(7)
-            box.append(pid)
+            text.append(unit)
             desc = Gtk.Label(label=svc["description"], xalign=0.0)
-            desc.get_style_context().add_class("omnify-dim")
-            desc.set_hexpand(True)
+            desc.get_style_context().add_class("tm-service-desc")
             desc.set_ellipsize(Pango.EllipsizeMode.END)
-            box.append(desc)
+            text.append(desc)
+            box.append(text)
+
+            status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            if svc["active"] == "failed" or svc["sub"] == "failed":
+                kind = "bad"
+            elif active:
+                kind = "ok"
+            else:
+                kind = ""
+            status.append(self._badge(svc["active"] or "unknown", kind))
+            sub = Gtk.Label(label=svc["sub"], xalign=0.0)
+            sub.get_style_context().add_class("tm-service-desc")
+            status.append(sub)
+            box.append(status)
+
+            pid = Gtk.Label(
+                label=str(svc.get("pid") or "—"), xalign=1.0
+            )
+            pid.set_width_chars(7)
+            pid.get_style_context().add_class("omnify-mono")
+            pid.get_style_context().add_class("tm-metric")
+            box.append(pid)
+
             row.set_child(box)
+            row.set_tooltip_text(tr("{unit} — {description}", unit=svc["unit"], description=svc["description"]))
             gesture = Gtk.GestureClick()
             gesture.set_button(3)
             gesture.connect("pressed", self._on_service_menu, svc["unit"], row)
@@ -2554,11 +2998,23 @@ class TaskManagerModule(BaseModule):
         self._popup_menu(
             row,
             (
-                ("Start", lambda: self._request_service_action("start", unit)),
-                ("Stop", lambda: self._request_service_action("stop", unit)),
-                ("Restart", lambda: self._request_service_action("restart", unit)),
+                (tr("Start"), lambda: self._request_service_action("start", unit)),
+                (tr("Stop"), lambda: self._request_service_action("stop", unit)),
+                (tr("Restart"), lambda: self._request_service_action("restart", unit)),
+                (
+                    tr("Copy unit name"),
+                    lambda: self._copy_text(unit, "Unit name copied"),
+                ),
             ),
         )
+
+    def _on_service_search(self, entry) -> None:
+        self._services_query = entry.get_text().strip()
+        self._render_services()
+
+    def _on_service_filter(self, key: str) -> None:
+        self._services_filter = key
+        self._render_services()
 
     def _request_service_action(self, action: str, unit: str) -> None:
         label = action.capitalize()
@@ -2580,71 +3036,203 @@ class TaskManagerModule(BaseModule):
         from gi.repository import Gtk
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.get_style_context().add_class("omni-page")
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        toolbar.get_style_context().add_class("tm-toolbar")
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self._startup_note = self._dim_label()
-        self._startup_note.set_hexpand(True)
-        header.append(self._startup_note)
-        refresh_button = Gtk.Button(label="Refresh")
+        self._startup_search = Gtk.SearchEntry()
+        self._startup_search.set_hexpand(True)
+        self._startup_search.set_placeholder_text(
+            tr("Search startup apps by name or command…")
+        )
+        self._startup_search.connect("search-changed", self._on_startup_search)
+        header.append(self._startup_search)
+        refresh_button = Gtk.Button(label=tr("Refresh"))
+        refresh_button.get_style_context().add_class("omni-pill")
         refresh_button.connect("clicked", self._load_startup)
         header.append(refresh_button)
-        page.append(header)
+        toolbar.append(header)
+
+        stats = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        stats.get_style_context().add_class("omni-stats")
+        self._startup_stats: Dict[str, Any] = {}
+        for key, label in (
+            ("total", "Entries"),
+            ("enabled", "Enabled"),
+            ("disabled", "Disabled"),
+        ):
+            card, value = self._stat_card(label)
+            stats.append(card)
+            self._startup_stats[key] = value
+        toolbar.append(stats)
+
+        self._startup_note = self._dim_label()
+        toolbar.append(self._startup_note)
+        page.append(toolbar)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.set_vexpand(True)
         self._startup_list = Gtk.ListBox()
+        self._startup_list.get_style_context().add_class("tm-list")
         self._startup_list.set_selection_mode(Gtk.SelectionMode.NONE)
         scroller.set_child(self._startup_list)
         page.append(scroller)
         return page
 
     def _load_startup(self, _button=None) -> None:
-        from gi.repository import Gtk
-        from gi.repository import Pango
-
-        entries = self._model.startup_entries()
-        for child in list(_iter_children(self._startup_list)):
-            self._startup_list.remove(child)
-        if not entries:
+        self._startup_data = self._model.startup_entries()
+        self._update_startup_stats()
+        if not self._startup_data:
             self._startup_note.set_label(tr("No autostart entries"))
+            self._clear_list(self._startup_list)
+            self._startup_list.append(
+                self._empty_row(
+                    tr("No autostart entries"),
+                    tr(
+                        "Apps in ~/.config/autostart will appear here with an "
+                        "on/off switch."
+                    ),
+                    "application-x-executable-symbolic",
+                )
+            )
             return
+        self._render_startup()
+
+    def _update_startup_stats(self) -> None:
+        stats = getattr(self, "_startup_stats", None)
+        if not stats:
+            return
+        enabled = sum(1 for entry in self._startup_data if entry.enabled)
+        stats["total"].set_label(str(len(self._startup_data)))
+        stats["enabled"].set_label(str(enabled))
+        stats["disabled"].set_label(str(len(self._startup_data) - enabled))
+
+    def _render_startup(self) -> None:
+        from gi.repository import Gtk, Pango
+
+        self._clear_list(self._startup_list)
+        query = self._startup_query.lower()
+        visible = [
+            entry
+            for entry in self._startup_data
+            if not query
+            or query in f"{entry.name} {entry.exec} {entry.path}".lower()
+        ]
         self._startup_note.set_label(
-            tr("{count} entries", count=len(entries))
+            tr(
+                "{shown} of {total} entries",
+                shown=len(visible),
+                total=len(self._startup_data),
+            )
         )
-        for entry in entries:
+        if not visible:
+            self._startup_list.append(
+                self._empty_row(
+                    tr("No startup apps match the filter"),
+                    tr("Clear the search to see every autostart entry."),
+                    "system-search-symbolic",
+                )
+            )
+            return
+        for entry in visible:
             row = Gtk.ListBoxRow()
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            box.set_margin_top(3)
-            box.set_margin_bottom(3)
-            box.set_margin_start(8)
-            box.set_margin_end(8)
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+            box.set_margin_top(5)
+            box.set_margin_bottom(5)
+            box.set_margin_start(7)
+            box.set_margin_end(9)
+
+            tile = Gtk.Box()
+            tile.get_style_context().add_class("omni-icon-tile")
+            if not entry.enabled:
+                tile.get_style_context().add_class("omni-icon-tile-neutral")
+            icon = Gtk.Image.new_from_icon_name("application-x-executable-symbolic")
+            icon.set_pixel_size(16)
+            tile.append(icon)
+            box.append(tile)
+
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            text.set_hexpand(True)
             name = Gtk.Label(label=entry.name, xalign=0.0)
+            name.get_style_context().add_class("tm-name")
             name.set_ellipsize(Pango.EllipsizeMode.END)
-            name.set_width_chars(24)
-            box.append(name)
-            exec_label = Gtk.Label(label=entry.exec or "-", xalign=0.0)
-            exec_label.get_style_context().add_class("omnify-dim")
-            exec_label.set_hexpand(True)
-            exec_label.set_ellipsize(Pango.EllipsizeMode.END)
-            box.append(exec_label)
+            text.append(name)
+            command = Gtk.Label(label=entry.exec or "—", xalign=0.0)
+            command.get_style_context().add_class("tm-cmd")
+            command.set_ellipsize(Pango.EllipsizeMode.END)
+            text.append(command)
+            box.append(text)
+
+            badge = self._badge(
+                "Enabled" if entry.enabled else "Disabled",
+                "ok" if entry.enabled else "",
+            )
+            box.append(badge)
+
             switch = Gtk.Switch()
             switch.set_active(entry.enabled)
+            switch.set_valign(Gtk.Align.CENTER)
+            switch._omnify_badge = badge
             switch.connect("state-set", self._on_startup_toggle, entry)
             box.append(switch)
+
             row.set_child(box)
+            row.set_tooltip_text(f"{entry.path}\n{entry.exec}")
+            gesture = Gtk.GestureClick()
+            gesture.set_button(3)
+            gesture.connect("pressed", self._on_startup_menu, entry, row)
+            row.add_controller(gesture)
             self._startup_list.append(row)
+
+    def _on_startup_search(self, entry) -> None:
+        self._startup_query = entry.get_text().strip()
+        self._render_startup()
+
+    def _on_startup_menu(self, _gesture, _n, _x, _y, entry: StartupEntry, row) -> None:
+        items = []
+        if entry.exec:
+            items.append(
+                (
+                    tr("Copy command"),
+                    lambda: self._copy_text(entry.exec, "Command copied"),
+                )
+            )
+        items.append(
+            (
+                tr("Copy file path"),
+                lambda: self._copy_text(entry.path, "Path copied"),
+            )
+        )
+        self._popup_menu(row, items)
 
     def _on_startup_toggle(self, switch, entry: StartupEntry) -> bool:
         enabled = switch.get_active()
         try:
             self._model.set_startup_enabled(entry, enabled)
+            entry.enabled = enabled
+            badge = getattr(switch, "_omnify_badge", None)
+            if badge is not None:
+                self._set_badge(
+                    badge,
+                    "Enabled" if enabled else "Disabled",
+                    "ok" if enabled else "",
+                )
+            self._update_startup_stats()
             self.ctx.notify(
-                f"Startup: {entry.name} {'enabled' if enabled else 'disabled'}"
+                tr(
+                    "Startup: {name} {state}",
+                    name=entry.name,
+                    state=tr("enabled") if enabled else tr("disabled"),
+                )
             )
         except Exception as exc:
             switch.set_active(not enabled)
-            self.ctx.notify(f"Could not update {entry.name}: {exc}")
+            self.ctx.notify(
+                tr("Could not update {name}: {error}", name=entry.name, error=str(exc))
+            )
         return False
 
     # -- Users page ---------------------------------------------------------------------
@@ -2652,35 +3240,69 @@ class TaskManagerModule(BaseModule):
         from gi.repository import Gtk
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.get_style_context().add_class("omni-page")
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        toolbar.get_style_context().add_class("tm-toolbar")
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._users_note = self._dim_label()
         self._users_note.set_hexpand(True)
         header.append(self._users_note)
-        refresh_button = Gtk.Button(label="Refresh")
+        refresh_button = Gtk.Button(label=tr("Refresh"))
+        refresh_button.get_style_context().add_class("omni-pill")
         refresh_button.connect("clicked", self._load_users)
         header.append(refresh_button)
-        page.append(header)
+        toolbar.append(header)
+
+        stats = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        stats.get_style_context().add_class("omni-stats")
+        self._users_stats: Dict[str, Any] = {}
+        for key, label in (
+            ("sessions", "Sessions"),
+            ("cpu", "CPU"),
+            ("mem", "Memory"),
+        ):
+            card, value = self._stat_card(label)
+            stats.append(card)
+            self._users_stats[key] = value
+        toolbar.append(stats)
+        page.append(toolbar)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.set_vexpand(True)
         self._users_list = Gtk.ListBox()
+        self._users_list.get_style_context().add_class("tm-list")
         self._users_list.set_selection_mode(Gtk.SelectionMode.NONE)
         scroller.set_child(self._users_list)
         page.append(scroller)
         return page
 
     def _load_users(self, _button=None) -> None:
-        from gi.repository import Gtk
-        from gi.repository import Pango
+        from gi.repository import Gtk, Pango
 
         sessions = self._model.sessions()
-        for child in list(_iter_children(self._users_list)):
-            self._users_list.remove(child)
+        self._clear_list(self._users_list)
+        stats = getattr(self, "_users_stats", None)
+        if stats:
+            stats["sessions"].set_label(str(len(sessions)))
+            stats["cpu"].set_label(
+                f"{sum(sess['cpu_percent'] for sess in sessions):.0f}%"
+            )
+            stats["mem"].set_label(
+                format_size(sum(sess["rss_kb"] for sess in sessions))
+            )
         if not sessions:
             self._users_note.set_label(
                 tr("no sessions found (loginctl unavailable?)")
+            )
+            self._users_list.append(
+                self._empty_row(
+                    tr("No sessions found"),
+                    tr("Log in on this machine or check that loginctl is available."),
+                    "avatar-default-symbolic",
+                )
             )
             return
         self._users_note.set_label(
@@ -2688,29 +3310,65 @@ class TaskManagerModule(BaseModule):
         )
         for sess in sessions:
             row = Gtk.ListBoxRow()
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            box.set_margin_top(3)
-            box.set_margin_bottom(3)
-            box.set_margin_start(8)
-            box.set_margin_end(8)
+            card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            card.get_style_context().add_class("tm-user-card")
+            card.set_margin_top(4)
+            card.set_margin_bottom(4)
+            card.set_margin_start(2)
+            card.set_margin_end(2)
+
+            avatar = Gtk.Label(label=(sess["user"] or "?")[:1].upper())
+            avatar.get_style_context().add_class("tm-avatar")
+            avatar.set_valign(Gtk.Align.CENTER)
+            card.append(avatar)
+
+            info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            info.set_hexpand(True)
             user = Gtk.Label(label=sess["user"], xalign=0.0)
+            user.get_style_context().add_class("omni-title")
             user.set_ellipsize(Pango.EllipsizeMode.END)
-            user.set_hexpand(True)
-            box.append(user)
-            sess_label = Gtk.Label(label=f"sess {sess['session']}", xalign=0.0)
-            sess_label.get_style_context().add_class("omnify-dim")
-            box.append(sess_label)
-            cpu_label = Gtk.Label(label=f"{sess['cpu_percent']:.1f}%", xalign=0.0)
-            cpu_label.get_style_context().add_class("omnify-mono")
-            box.append(cpu_label)
-            ram_label = Gtk.Label(label=format_size(sess["rss_kb"]), xalign=0.0)
-            ram_label.get_style_context().add_class("omnify-mono")
-            box.append(ram_label)
-            logout = Gtk.Button(label="Log out")
+            info.append(user)
+            detail = Gtk.Label(
+                label=tr(
+                    "Session {session} · UID {uid} · {state}",
+                    session=sess["session"],
+                    uid=sess["uid"],
+                    state=sess.get("state") or tr("active"),
+                ),
+                xalign=0.0,
+            )
+            detail.get_style_context().add_class("tm-service-desc")
+            detail.set_ellipsize(Pango.EllipsizeMode.END)
+            info.append(detail)
+            card.append(info)
+
+            chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            chips.set_valign(Gtk.Align.CENTER)
+            for label, value in (
+                ("CPU", f"{sess['cpu_percent']:.1f}%"),
+                ("RAM", format_size(sess["rss_kb"])),
+            ):
+                chip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+                chip.get_style_context().add_class("omni-chip")
+                caption = Gtk.Label(label=tr(label), xalign=0.0)
+                caption.get_style_context().add_class("omni-chip-label")
+                chip.append(caption)
+                amount = Gtk.Label(label=value, xalign=0.0)
+                amount.get_style_context().add_class("omni-chip-value")
+                chip.append(amount)
+                chips.append(chip)
+            card.append(chips)
+
+            logout = Gtk.Button(label=tr("Log out"))
             logout.get_style_context().add_class("omnify-danger")
+            logout.set_valign(Gtk.Align.CENTER)
             logout.connect("clicked", self._request_logout, sess["session"], sess["user"])
-            box.append(logout)
-            row.set_child(box)
+            card.append(logout)
+
+            row.set_child(card)
+            row.set_tooltip_text(
+                f"Session {sess['session']} · UID {sess['uid']} · {sess.get('state', '')}"
+            )
             self._users_list.append(row)
 
     def _request_logout(self, _button, session: str, user: str) -> None:
@@ -2795,6 +3453,18 @@ class TaskManagerModule(BaseModule):
         self._popup_menu(
             row,
             (
+                (
+                    tr("Show details"),
+                    lambda: self._show_process_details(pid),
+                ),
+                (
+                    tr("Copy PID"),
+                    lambda: self._copy_text(str(pid), "PID copied"),
+                ),
+                (
+                    tr("Copy command line"),
+                    lambda: self._copy_text(info.cmdline, "Command copied"),
+                ),
                 ("End task", lambda: self._request_kill(pid, False, False, info.name)),
                 ("Force end", lambda: self._request_kill(pid, True, False, info.name)),
                 (
@@ -2803,6 +3473,35 @@ class TaskManagerModule(BaseModule):
                 ),
             ),
         )
+
+    def _on_detail_right_press(self, _gesture, _n, _x, _y, pid: int, row) -> None:
+        info = self._proc_info.get(pid)
+        if info is None:
+            return
+        self._popup_menu(
+            row,
+            (
+                (
+                    tr("Show in Processes"),
+                    lambda: self._show_in_processes(pid),
+                ),
+                (
+                    tr("Copy PID"),
+                    lambda: self._copy_text(str(pid), "PID copied"),
+                ),
+                (
+                    tr("Copy command line"),
+                    lambda: self._copy_text(info.cmdline, "Command copied"),
+                ),
+                ("End task", lambda: self._request_kill(pid, False, False, info.name)),
+                ("Force end", lambda: self._request_kill(pid, True, False, info.name)),
+            ),
+        )
+
+    def _clear_detail_search(self, _button=None) -> None:
+        if getattr(self, "_detail_search", None) is not None:
+            self._detail_search.set_text("")
+            self._on_detail_search(self._detail_search)
 
     def _on_end_task_clicked(self, _button) -> None:
         row = self._proc_list.get_selected_row()

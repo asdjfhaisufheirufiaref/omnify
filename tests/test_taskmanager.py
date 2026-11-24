@@ -20,6 +20,7 @@ from omnify.modules.taskmanager import (  # noqa: E402
     RingBuffer,
     TaskManager,
     StartupEntry,
+    detail_matches,
     filter_processes,
     format_bytes,
     format_speed,
@@ -695,6 +696,19 @@ class TestTopFilterSort(unittest.TestCase):
     def test_filter_empty_returns_all(self):
         infos = [make_info(1), make_info(2)]
         self.assertEqual(len(filter_processes(infos, "   ")), 2)
+
+    def test_detail_numeric_query_is_exact_pid(self):
+        infos = [make_info(1), make_info(11), make_info(123)]
+        self.assertEqual([i.pid for i in infos if detail_matches(i, "1")], [1])
+        self.assertEqual([i.pid for i in infos if detail_matches(i, "11")], [11])
+
+    def test_detail_text_query_matches_name_and_command(self):
+        info = make_info(42, name="python3")
+        info.cmdline = "python3 -m omnify --module notes"
+        self.assertTrue(detail_matches(info, "PYTHON"))
+        self.assertTrue(detail_matches(info, "notes"))
+        self.assertTrue(detail_matches(info, ""))
+        self.assertFalse(detail_matches(info, "browser"))
 
     def test_sorted_by_desc(self):
         infos = [make_info(1, cpu=1.0), make_info(2, cpu=3.0), make_info(3, cpu=2.0)]
